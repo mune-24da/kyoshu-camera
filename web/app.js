@@ -265,6 +265,8 @@ async function startCamera() {
   video.srcObject = stream;
   await video.play();
   await listCameras();
+  // 鏡像は自撮り(前面)カメラのときだけ。背面カメラを鏡像にすると左右が逆に見える
+  setMirror(isFrontCamera(stream.getVideoTracks()[0]));
   source = "camera";
   beginSession();
   const t0 = performance.now();
@@ -275,6 +277,17 @@ async function startCamera() {
     else requestAnimationFrame(loop);
   };
   loop();
+}
+
+function isFrontCamera(track) {
+  const facing = track.getSettings().facingMode;
+  if (facing) return facing === "user";
+  return !/back|rear|environment|背面/i.test(track.label);
+}
+
+function setMirror(on) {
+  cfg.mirror = on;
+  $("#mirror").checked = on;
 }
 
 async function listCameras() {
@@ -325,6 +338,11 @@ for (const k of ["over", "forearm", "elbow", "hold"]) {
   sync();
 }
 $("#mirror").onchange = (e) => (cfg.mirror = e.target.checked);
+// 画面ロック防止はページが裏に回ると解除されるので、戻ったときに取り直す
+document.addEventListener("visibilitychange", () => {
+  if (running && document.visibilityState === "visible")
+    navigator.wakeLock?.request("screen").then((l) => (wakeLock = l)).catch(() => {});
+});
 $("#model").onchange = (e) => (cfg.model = e.target.value);
 $("#startCam").onclick = startCamera;
 $("#camera").onchange = () => { if (source === "camera" && running) startCamera(); };

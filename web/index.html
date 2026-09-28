@@ -40,6 +40,16 @@
   label input[type=range] { width: 100%; }
   label b { color: var(--text); font-weight: normal; }
   .note { font-size: 13px; color: var(--dim); margin: 8px 0 0; }
+  /* スマホを横に倒したとき: 映像を画面の高さに収め、操作は右側に並べる */
+  @media (orientation: landscape) and (max-height: 600px) {
+    main { max-width: none; display: flex; gap: 10px; align-items: flex-start;
+           padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left)); }
+    .stage { flex: 1; min-width: 0; display: flex; justify-content: center; }
+    #view { width: auto; max-width: 100%; max-height: calc(100dvh - 12px); }
+    .side { width: 260px; flex: none; max-height: calc(100dvh - 12px); overflow-y: auto; }
+    .side .queue { margin-top: 0; }
+    .grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -52,6 +62,7 @@
     <div id="toast"></div>
   </div>
 
+  <div class="side">
   <div class="queue">
     <h2>挙手の順番(押すと取り消し)</h2>
     <div id="queue"><span class="empty">まだ誰も挙げていない</span></div>
@@ -100,6 +111,7 @@
       <button id="csv">記録をCSVで保存</button>
     </div>
   </details>
+  </div>
 </main>
 <script type="module" src="app.js"></script>
 </body>
