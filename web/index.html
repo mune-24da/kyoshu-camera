@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>挙手カメラ</title>
+<style>
+  :root { color-scheme: dark; --bg: #111; --panel: #1c1c1c; --line: #333; --text: #eee; --dim: #999;
+          --accent: #ffc400; --ok: #7cf07c; --ng: #ff7878; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Hiragino Sans", "Meiryo", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .stage { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
+  #view { display: block; width: 100%; height: auto; }
+  #video { display: none; }
+  #hud { position: absolute; left: 0; top: 0; padding: 6px 10px; background: rgba(0,0,0,.65);
+         font-size: 14px; border-bottom-right-radius: 8px; max-width: 100%; }
+  #hud .raised { color: var(--accent); }
+  #hud .warn { color: var(--ng); }
+  #toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: rgba(0,0,0,.8);
+           color: var(--ok); padding: 6px 14px; border-radius: 20px; font-size: 15px; display: none; }
+  #placeholder { padding: 60px 16px; text-align: center; color: var(--dim); }
+  .queue { margin-top: 10px; background: var(--panel); border-radius: 8px; padding: 10px; }
+  .queue h2 { margin: 0 0 6px; font-size: 14px; color: var(--dim); font-weight: normal; }
+  #queue { display: flex; flex-wrap: wrap; gap: 8px; min-height: 44px; align-items: center; }
+  #queue .chip { font-size: 18px; padding: 8px 14px; border-radius: 22px; border: 1px solid var(--accent);
+                 background: transparent; color: var(--accent); }
+  #queue .chip small { color: var(--dim); margin-right: 6px; font-size: 13px; }
+  #queue .empty { color: var(--dim); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  button, select, input[type=file] { font: inherit; color: var(--text); background: #2a2a2a;
+         border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-height: 44px; }
+  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: bold; }
+  button:disabled { opacity: .4; }
+  details { margin-top: 12px; background: var(--panel); border-radius: 8px; padding: 10px; }
+  summary { cursor: pointer; color: var(--dim); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 20px; margin-top: 10px; }
+  label { display: block; font-size: 14px; color: var(--dim); }
+  label input[type=range] { width: 100%; }
+  label b { color: var(--text); font-weight: normal; }
+  .note { font-size: 13px; color: var(--dim); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="stage">
+    <canvas id="view" width="1280" height="720" hidden></canvas>
+    <video id="video" playsinline muted></video>
+    <div id="placeholder">「カメラで開始」を押すとカメラの映像で挙手を検出します。</div>
+    <div id="hud" hidden></div>
+    <div id="toast"></div>
+  </div>
+
+  <div class="queue">
+    <h2>挙手の順番(押すと取り消し)</h2>
+    <div id="queue"><span class="empty">まだ誰も挙げていない</span></div>
+    <div class="row">
+      <button id="undoLast">最後を取り消す</button>
+      <button id="reset">順番をリセット</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="startCam" class="primary">カメラで開始</button>
+    <button id="stop" disabled>停止</button>
+    <select id="camera" aria-label="カメラ"><option value="">カメラを選ぶ(開始後に一覧が出ます)</option></select>
+  </div>
+
+  <details>
+    <summary>設定・検証用</summary>
+    <div class="grid">
+      <label>骨格推定モデル
+        <select id="model">
+          <option value="lite">lite(軽い・粗い)</option>
+          <option value="full" selected>full(標準)</option>
+          <option value="heavy">heavy(重い・細かい)</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="mirror" checked> 映像を鏡像で表示する(自撮り向き)</label>
+      <label>鼻: 手首が鼻より <b id="overV"></b> 以上上
+        <input type="range" id="over" min="-0.3" max="0.6" step="0.01" value="0.10"></label>
+      <label>腕: 手首が肘より <b id="forearmV"></b> 以上上
+        <input type="range" id="forearm" min="-0.3" max="0.6" step="0.01" value="0.15"></label>
+      <label>肘: 肘が肩より <b id="elbowV"></b> 以上上
+        <input type="range" id="elbow" min="-0.5" max="0.5" step="0.01" value="0.02"></label>
+      <label>継続: <b id="holdV"></b> 秒続いたら挙手・解除
+        <input type="range" id="hold" min="0.1" max="2" step="0.1" value="0.6"></label>
+    </div>
+    <p class="note">基準の値はすべて肩幅を1とした長さ。</p>
+    <div class="grid">
+      <label>録画した映像を読む
+        <input type="file" id="videoFile" accept="video/*"></label>
+      <label>各コマの時刻ファイル(任意、*.times.txt)
+        <input type="file" id="timesFile" accept=".txt,text/plain"></label>
+    </div>
+    <p class="note">録画は1秒10コマずつ順に判定する。時刻ファイルがあれば、その時刻で継続秒数を数える。</p>
+    <div class="row">
+      <button id="startFile">映像で開始</button>
+      <button id="csv">記録をCSVで保存</button>
+    </div>
+  </details>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
