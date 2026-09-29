@@ -265,7 +265,7 @@ async function startCamera() {
   video.srcObject = stream;
   await video.play();
   await listCameras();
-  // 鏡像は自撮り(前面)カメラのときだけ。背面カメラを鏡像にすると左右が逆に見える
+  // 鏡像は自撮り(前面)カメラのときだけ。背面や外付けのカメラを鏡像にすると左右が逆に見える
   setMirror(isFrontCamera(stream.getVideoTracks()[0]));
   source = "camera";
   beginSession();
@@ -279,10 +279,11 @@ async function startCamera() {
   loop();
 }
 
+// 向きが分からないカメラ(USB の外付けなど)は参加者側に向けて置くものとして鏡像にしない
 function isFrontCamera(track) {
   const facing = track.getSettings().facingMode;
   if (facing) return facing === "user";
-  return !/back|rear|environment|背面/i.test(track.label);
+  return /front|前面|facetime/i.test(track.label);
 }
 
 function setMirror(on) {
