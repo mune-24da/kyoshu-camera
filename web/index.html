@@ -1,118 +1,342 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>挙手カメラ</title>
-<style>
-  :root { color-scheme: dark; --bg: #111; --panel: #1c1c1c; --line: #333; --text: #eee; --dim: #999;
-          --accent: #ffc400; --ok: #7cf07c; --ng: #ff7878; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.5 system-ui, -apple-system, "Hiragino Sans", "Meiryo", sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
-  .stage { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
-  #view { display: block; width: 100%; height: auto; }
-  #video { display: none; }
-  #hud { position: absolute; left: 0; top: 0; padding: 6px 10px; background: rgba(0,0,0,.65);
-         font-size: 14px; border-bottom-right-radius: 8px; max-width: 100%; }
-  #hud .raised { color: var(--accent); }
-  #hud .warn { color: var(--ng); }
-  #toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: rgba(0,0,0,.8);
-           color: var(--ok); padding: 6px 14px; border-radius: 20px; font-size: 15px; display: none; }
-  #placeholder { padding: 60px 16px; text-align: center; color: var(--dim); }
-  .queue { margin-top: 10px; background: var(--panel); border-radius: 8px; padding: 10px; }
-  .queue h2 { margin: 0 0 6px; font-size: 14px; color: var(--dim); font-weight: normal; }
-  #queue { display: flex; flex-wrap: wrap; gap: 8px; min-height: 44px; align-items: center; }
-  #queue .chip { font-size: 18px; padding: 8px 14px; border-radius: 22px; border: 1px solid var(--accent);
-                 background: transparent; color: var(--accent); }
-  #queue .chip small { color: var(--dim); margin-right: 6px; font-size: 13px; }
-  #queue .empty { color: var(--dim); }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  button, select, input[type=file] { font: inherit; color: var(--text); background: #2a2a2a;
-         border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-height: 44px; }
-  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: bold; }
-  button:disabled { opacity: .4; }
-  details { margin-top: 12px; background: var(--panel); border-radius: 8px; padding: 10px; }
-  summary { cursor: pointer; color: var(--dim); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 20px; margin-top: 10px; }
-  label { display: block; font-size: 14px; color: var(--dim); }
-  label input[type=range] { width: 100%; }
-  label b { color: var(--text); font-weight: normal; }
-  .note { font-size: 13px; color: var(--dim); margin: 8px 0 0; }
-  /* スマホを横に倒したとき: 映像を画面の高さに収め、操作は右側に並べる */
-  @media (orientation: landscape) and (max-height: 600px) {
-    main { max-width: none; display: flex; gap: 10px; align-items: flex-start;
-           padding: 6px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left)); }
-    .stage { flex: 1; min-width: 0; display: flex; justify-content: center; }
-    #view { width: auto; max-width: 100%; max-height: calc(100dvh - 12px); }
-    .side { width: 260px; flex: none; max-height: calc(100dvh - 12px); overflow-y: auto; }
-    .side .queue { margin-top: 0; }
-    .grid { grid-template-columns: 1fr; }
-  }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>挙手カメラ</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111;
+      --panel: #1c1c1c;
+      --line: #333;
+      --text: #eee;
+      --dim: #999;
+      --accent: #ffc400;
+      --ok: #7cf07c;
+      --ng: #ff7878;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Hiragino Sans", "Meiryo", sans-serif;
+    }
+    main {
+      max-width: 1100px;
+      margin: auto;
+      padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+    }
+    .stage {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #view { display: block; width: 100%; height: auto; }
+    #video { display: none; }
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      max-width: 100%;
+      padding: 6px 10px;
+      background: #000a;
+      font-size: 14px;
+      border-bottom-right-radius: 8px;
+    }
+    #hud .raised { color: var(--accent); }
+    #hud .warn { color: var(--ng); }
+    #recordHud {
+      position: absolute;
+      top: 0;
+      right: 0;
+      padding: 6px 10px;
+      color: var(--ok);
+      background: #000a;
+      font-size: 14px;
+      border-bottom-left-radius: 8px;
+    }
+    #toast {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      padding: 6px 14px;
+      color: var(--ok);
+      background: #000c;
+      font-size: 15px;
+      border-radius: 20px;
+      transform: translateX(-50%);
+      display: none;
+    }
+    #placeholder { padding: 60px 16px; text-align: center; color: var(--dim); }
+    .queue, .progress {
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--panel);
+      border-radius: 8px;
+    }
+    .queue h2, .export h2 {
+      margin: 0;
+      color: var(--dim);
+      font-size: 14px;
+      font-weight: normal;
+    }
+    .queue h2 { margin-bottom: 6px; }
+    #queue, #progressQueue {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    #queue {
+      gap: 8px;
+      min-height: 44px;
+      align-items: center;
+    }
+    #queue .chip {
+      padding: 8px 14px;
+      color: var(--accent);
+      background: transparent;
+      font-size: 18px;
+      border: 1px solid var(--accent);
+      border-radius: 22px;
+    }
+    #queue .chip small { margin-right: 6px; color: var(--dim); font-size: 13px; }
+    .empty { color: var(--dim); }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button, select, input[type=file] {
+      min-height: 44px;
+      padding: 10px 14px;
+      color: var(--text);
+      background: #2a2a2a;
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    button.primary {
+      color: #111;
+      background: var(--accent);
+      font-weight: bold;
+      border-color: var(--accent);
+    }
+    button:disabled { opacity: .4; }
+    details {
+      margin-top: 12px;
+      padding: 10px;
+      background: var(--panel);
+      border-radius: 8px;
+    }
+    summary { cursor: pointer; color: var(--dim); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px 20px;
+      margin-top: 10px;
+    }
+    label { display: block; color: var(--dim); font-size: 14px; }
+    label input[type=range] { width: 100%; }
+    label b { color: var(--text); font-weight: normal; }
+    .note { margin: 8px 0 0; color: var(--dim); font-size: 13px; }
+    #progress { display: none; }
+    #progress.active { display: block; }
+    #progress .now {
+      display: flex;
+      min-height: 2.5em;
+      align-items: center;
+      color: var(--accent);
+      font-size: clamp(36px, 8vw, 90px);
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    #progressQueue { gap: 10px; margin-top: 12px; }
+    #progressQueue button {
+      padding: 12px 18px;
+      color: var(--accent);
+      font-size: clamp(20px, 3vw, 34px);
+      border-color: var(--accent);
+    }
+    #progress .row button { padding: 14px 20px; font-size: 20px; }
+    .normal-screen.hidden, .normal-only.hidden { display: none; }
+    .export {
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--panel);
+      border-radius: 8px;
+    }
+    main.progress-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(120px, 38vw);
+      grid-template-areas: "progress stage" "progress side";
+      gap: 10px;
+      max-width: none;
+      align-items: start;
+    }
+    main.progress-layout #progress {
+      grid-area: progress;
+      min-height: calc(100dvh - 16px);
+      margin-top: 0;
+    }
+    main.progress-layout .stage { grid-area: stage; }
+    main.progress-layout .side { grid-area: side; }
+    /* 進行画面の小さい映像では判定の詳細は読めないので、席番号と挙手の印だけにする */
+    main.progress-layout #hud { display: none; }
+    @media (orientation: portrait) and (max-width: 600px) {
+      main.progress-layout {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "stage" "progress" "side";
+      }
+      main.progress-layout .stage { justify-self: end; width: 55%; }
+      main.progress-layout #progress { min-height: auto; }
+    }
+    @media (orientation: landscape) and (min-width: 700px) {
+      main.progress-layout {
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 36vw);
+      }
+      main.progress-layout #view { max-height: 42dvh; object-fit: contain; }
+    }
+    @media (orientation: landscape) and (max-height: 600px) {
+      main:not(.progress-layout) {
+        display: flex;
+        gap: 10px;
+        max-width: none;
+        padding: 6px max(8px, env(safe-area-inset-right)) 6px
+          max(8px, env(safe-area-inset-left));
+        align-items: flex-start;
+      }
+      main:not(.progress-layout) .stage {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        justify-content: center;
+      }
+      main:not(.progress-layout) #view {
+        width: auto;
+        max-width: 100%;
+        max-height: calc(100dvh - 12px);
+      }
+      main:not(.progress-layout) .side {
+        flex: none;
+        width: 280px;
+        max-height: calc(100dvh - 12px);
+        overflow-y: auto;
+      }
+      main:not(.progress-layout) .queue { margin-top: 0; }
+      main:not(.progress-layout) .grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-<main>
-  <div class="stage">
-    <canvas id="view" width="1280" height="720" hidden></canvas>
-    <video id="video" playsinline muted></video>
-    <div id="placeholder">「カメラで開始」を押すとカメラの映像で挙手を検出します。</div>
-    <div id="hud" hidden></div>
-    <div id="toast"></div>
-  </div>
-
-  <div class="side">
-  <div class="queue">
-    <h2>挙手の順番(押すと取り消し)</h2>
-    <div id="queue"><span class="empty">まだ誰も挙げていない</span></div>
-    <div class="row">
-      <button id="undoLast">最後を取り消す</button>
-      <button id="reset">順番をリセット</button>
+  <main id="main">
+    <div class="stage">
+      <canvas id="view" width="1280" height="720" hidden></canvas>
+      <video id="video" playsinline muted></video>
+      <div id="placeholder">「カメラで開始」を押すとカメラの映像で挙手を検出します。</div>
+      <div id="hud" hidden></div>
+      <div id="recordHud" hidden></div>
+      <div id="toast"></div>
     </div>
-  </div>
-
-  <div class="row">
-    <button id="startCam" class="primary">カメラで開始</button>
-    <button id="stop" disabled>停止</button>
-    <select id="camera" aria-label="カメラ"><option value="">カメラを選ぶ(開始後に一覧が出ます)</option></select>
-  </div>
-
-  <details>
-    <summary>設定・検証用</summary>
-    <div class="grid">
-      <label>骨格推定モデル
-        <select id="model">
-          <option value="lite">lite(軽い・粗い)</option>
-          <option value="full" selected>full(標準)</option>
-          <option value="heavy">heavy(重い・細かい)</option>
+    <section id="progress" class="progress">
+      <div class="now" id="progressNow">挙手待ち</div>
+      <div id="progressQueue"></div>
+      <div class="row">
+        <button id="progressUndo">最後を取り消す</button>
+        <button id="progressReset">順番をリセット</button>
+        <button id="releaseSeats">確定を解除</button>
+      </div>
+    </section>
+    <div class="side">
+      <div class="queue normal-screen">
+        <h2>挙手の順番(押すと取り消し)</h2>
+        <div id="queue">
+          <span class="empty">まだ誰も挙げていない</span>
+        </div>
+        <div class="row">
+          <button id="undoLast">最後を取り消す</button>
+          <button id="reset">順番をリセット</button>
+        </div>
+      </div>
+      <div class="row normal-screen">
+        <button id="startCam" class="primary">カメラで開始</button>
+        <button id="stop" disabled>停止</button>
+        <select id="camera" aria-label="カメラ">
+          <option value="">カメラを選ぶ(開始後に一覧が出ます)</option>
         </select>
-      </label>
-      <label><input type="checkbox" id="mirror" checked> 映像を鏡像で表示する(自撮り向き)</label>
-      <label>鼻: 手首が鼻より <b id="overV"></b> 以上上
-        <input type="range" id="over" min="-0.3" max="0.6" step="0.01" value="0.10"></label>
-      <label>腕: 手首が肘より <b id="forearmV"></b> 以上上
-        <input type="range" id="forearm" min="-0.3" max="0.6" step="0.01" value="0.15"></label>
-      <label>肘: 肘が肩より <b id="elbowV"></b> 以上上
-        <input type="range" id="elbow" min="-0.5" max="0.5" step="0.01" value="0.02"></label>
-      <label>継続: <b id="holdV"></b> 秒続いたら挙手・解除
-        <input type="range" id="hold" min="0.1" max="2" step="0.1" value="0.6"></label>
+      </div>
+      <div class="row normal-screen">
+        <select id="recordMode" aria-label="記録モード">
+          <option value="none">記録なし</option>
+          <option value="log">ログのみ</option>
+          <option value="video">録画+ログ</option>
+        </select>
+        <button id="confirmSeats" disabled>人数を確定(0人)</button>
+      </div>
+      <div class="export">
+        <h2>書き出し</h2>
+        <div class="row">
+          <button id="share">共有</button>
+          <button id="download">ダウンロード</button>
+          <button id="copySummary">要約をコピー</button>
+          <button id="copyCsv">ログCSVをコピー</button>
+        </div>
+      </div>
+      <details>
+        <summary>設定・検証用</summary>
+        <div class="grid">
+          <label>
+            骨格推定モデル
+            <select id="model">
+              <option value="lite">lite(軽い・粗い)</option>
+              <option value="full" selected>full(標準)</option>
+              <option value="heavy">heavy(重い・細かい)</option>
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" id="mirror" checked>
+            映像を鏡像で表示する(自撮り向き)
+          </label>
+          <label>
+            鼻: 手首が鼻より <b id="overV"></b> 以上上
+            <input type="range" id="over" min="-0.3" max="0.6" step="0.01" value="0.10">
+          </label>
+          <label>
+            腕: 手首が肘より <b id="forearmV"></b> 以上上
+            <input type="range" id="forearm" min="-0.3" max="0.6" step="0.01" value="0.15">
+          </label>
+          <label>
+            肘: 肘が肩より <b id="elbowV"></b> 以上上
+            <input type="range" id="elbow" min="-0.5" max="0.5" step="0.01" value="0.02">
+          </label>
+          <label>
+            継続: <b id="holdV"></b> 秒続いたら挙手・解除
+            <input type="range" id="hold" min="0.1" max="2" step="0.1" value="0.6">
+          </label>
+        </div>
+        <p class="note">基準の値はすべて肩幅を1とした長さ。</p>
+        <div class="row">
+          <button id="defaults">基準を初期値に戻す</button>
+        </div>
+        <div class="grid">
+          <label>
+            録画した映像を読む
+            <input type="file" id="videoFile" accept="video/*">
+          </label>
+          <label>
+            各コマの時刻ファイル(任意、*.times.txt)
+            <input type="file" id="timesFile" accept=".txt,text/plain">
+          </label>
+        </div>
+        <p class="note">録画は1秒10コマずつ順に判定する。時刻ファイルがあれば、その時刻で継続秒数を数える。</p>
+        <div class="row">
+          <button id="startFile">映像で開始</button>
+        </div>
+      </details>
     </div>
-    <p class="note">基準の値はすべて肩幅を1とした長さ。</p>
-    <div class="grid">
-      <label>録画した映像を読む
-        <input type="file" id="videoFile" accept="video/*"></label>
-      <label>各コマの時刻ファイル(任意、*.times.txt)
-        <input type="file" id="timesFile" accept=".txt,text/plain"></label>
-    </div>
-    <p class="note">録画は1秒10コマずつ順に判定する。時刻ファイルがあれば、その時刻で継続秒数を数える。</p>
-    <div class="row">
-      <button id="startFile">映像で開始</button>
-      <button id="csv">記録をCSVで保存</button>
-    </div>
-  </details>
-  </div>
-</main>
-<script type="module" src="app.js"></script>
+  </main>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
