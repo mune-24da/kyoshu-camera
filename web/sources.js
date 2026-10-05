@@ -10,6 +10,9 @@ const recordingType = () => {
 
 export function createSources(state, view, vision, session) {
   const { elements } = view;
+  // 止めた後も前回のコールバックが1つ残り、次の映像が流れ始めると動き出す。
+  // 開始のたびに番号を進め、古い番号のループはそこで終わらせる
+  let runId = 0;
 
   function stopRecorder() {
     if (state.recorder?.state === "recording") {
@@ -19,6 +22,7 @@ export function createSources(state, view, vision, session) {
   }
 
   function stop() {
+    runId++;
     state.running = false;
     stopRecorder();
     state.stream?.getTracks().forEach((track) => track.stop());
@@ -91,10 +95,12 @@ export function createSources(state, view, vision, session) {
 
   async function startCamera() {
     stop();
+    const run = runId;
+    let stream;
     try {
       await vision.ensureLandmarker();
       const deviceId = elements.camera.value;
-      state.stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           ...(deviceId
@@ -108,10 +114,16 @@ export function createSources(state, view, vision, session) {
       view.showToast(`カメラを開けません: ${error.message}`, 8);
       return;
     }
+    if (run !== runId) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
 
+    state.stream = stream;
     elements.video.srcObject = state.stream;
     await elements.video.play();
     await listCameras();
+    if (run !== runId) return;
     if (!state.hasMirrorOverride) {
       setMirror(isFrontCamera(state.stream.getVideoTracks()[0]));
     }
@@ -121,7 +133,7 @@ export function createSources(state, view, vision, session) {
     startRecorder(state.stream);
 
     const loop = () => {
-      if (!state.running || state.source !== "camera") return;
+      if (run !== runId || !state.running || state.source !== "camera") return;
 
       session.processFrame((performance.now() - startedAt) / 1000);
       if (elements.video.requestVideoFrameCallback) {
@@ -135,6 +147,7 @@ export function createSources(state, view, vision, session) {
 
   async function startFile(url, times) {
     stop();
+    const run = runId;
     await vision.ensureLandmarker();
     elements.video.srcObject = null;
     elements.video.src = url;
@@ -148,7 +161,7 @@ export function createSources(state, view, vision, session) {
     const frames = times.length || Math.floor(elements.video.duration / FILE_STEP);
     for (
       let index = 0;
-      index < frames && state.running && state.source === "file";
+      index < frames && run === runId && state.running && state.source === "file";
       index++
     ) {
       elements.video.currentTime = Math.min(
@@ -160,6 +173,7 @@ export function createSources(state, view, vision, session) {
       await new Promise((resolve) => setTimeout(resolve));
     }
 
+    if (run !== runId) return;
     if (state.running && state.source === "file") {
       state.running = false;
       elements.stop.disabled = true;
