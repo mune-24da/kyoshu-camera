@@ -62,6 +62,8 @@ test("カメラを開始し直しても、1コマにつき判定は1回だけ走
   frames.length = 0;
 
   presentFrame();
+  await new Promise(queueMicrotask);
   presentFrame();
+  await new Promise(queueMicrotask);
   assert.equal(frames.length, 2);
 });

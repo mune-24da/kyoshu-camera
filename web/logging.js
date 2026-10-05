@@ -106,16 +106,18 @@ export function createLogger(state) {
       }).join("; ")
       : "未確定";
 
+    const modelLabel = state.method === "yolo" ? `yolo11n 入力${state.yoloSize}` : state.config.model;
     return [
       "挙手カメラ 記録要約",
       `日時: ${state.startedAt?.toLocaleString("ja-JP") ?? "未開始"}`,
       `ブラウザ: ${navigator.userAgent}`,
       `カメラ: ${state.cameraName || "不明"} / ${state.resolution || "不明"}`,
-      `モデル: ${state.config.model} / ${state.delegate || "不明"}`,
+      `方式: ${state.method} / モデル: ${modelLabel} / ${state.delegate || "不明"}`,
+      `YOLO入力: ${state.yoloSize ?? "-"} / 希望解像度: ${state.resolutionChoice ?? "-"}`,
       `基準: 鼻=${state.config.over}, 腕=${state.config.forearm}, 肘=${state.config.elbow}, 継続=${state.config.hold}秒`,
       `平均fps: ${state.fps.toFixed(1)} / 記録モード: ${state.activeRecordMode}`,
-      `検出した人数ごとのコマ数: ${histogramText(state.detectedHist)}`,
-      `採用した人数ごとのコマ数: ${histogramText(state.keptHist)}`,
+      `${state.method === "crop" ? "席数" : "検出した人数"}ごとのコマ数: ${histogramText(state.detectedHist)}`,
+      `${state.method === "crop" ? "追えた人数" : "採用した人数"}ごとのコマ数: ${histogramText(state.keptHist)}`,
       `人数確定: ${seats}`,
       `イベント(${state.events.length}件):${events ? `\n${events}` : " なし"}`
         + `${state.events.length > 120 ? "\n…以降省略" : ""}`,

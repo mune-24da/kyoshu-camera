@@ -8,6 +8,7 @@ import {
 } from "./detection.mjs";
 import { createLogger, sessionFileName } from "./logging.js";
 import { allocateSeats, registerSeatPositions } from "./seats.mjs";
+import { parseSeats } from "./crop.mjs";
 import { createSources, parseTimes } from "./sources.js";
 import { createState, saveSettings } from "./state.js";
 import { createView } from "./view.js";
@@ -42,30 +43,27 @@ function displayOrder(people) {
   });
 }
 
-function processFrame(now) {
+async function processFrame(now) {
   state.now = now;
   state.frameNo++;
 
-  const width = elements.video.videoWidth;
-  const height = elements.video.videoHeight;
-  const result = vision.detect(elements.video);
+  const result = await vision.detect(elements.video);
   const found = [];
 
-  for (const landmarks of result.landmarks) {
-    const points = landmarks.map((landmark) => ({
-      x: landmark.x * width,
-      y: landmark.y * height,
-      v: landmark.visibility ?? 1,
-    }));
+  for (const detection of result.detections) {
+    const points = detection.points ?? detection;
     const lift = personLift(points);
 
     if (lift) {
-      found.push({ p: points, pl: lift });
+      found.push({ p: points, pl: lift, seat: detection.seat });
     }
   }
 
   let people;
-  if (state.seatsConfirmed) {
+  const fixedSeats = found.some((person) => Number.isInteger(person.seat));
+  if (fixedSeats) {
+    people = found.filter((person) => state.seats[person.seat]);
+  } else if (state.seatsConfirmed) {
     const allocation = allocateSeats(state.seats, found);
     state.seats.forEach((seat, index) => {
       Object.assign(seat, allocation.seats[index]);
@@ -83,12 +81,14 @@ function processFrame(now) {
   }
 
   // 骨格推定が見つけた人数と、両肩が見えない・値が異常などで捨てた後の人数を分けて数える
-  state.detectedCount = result.landmarks.length;
+  state.detectedCount = result.detectedCount;
   state.detectedHist[state.detectedCount] = (state.detectedHist[state.detectedCount] ?? 0) + 1;
   state.keptHist[people.length] = (state.keptHist[people.length] ?? 0) + 1;
   state.lastPeople = people;
+  state.seats.forEach((seat) => seat.tracked = false);
   people.forEach((person) => {
     const seat = state.seats[person.seat];
+    seat.tracked = true;
     person.c = {
       left: armRaised(person.pl.feat.left, state.config),
       right: armRaised(person.pl.feat.right, state.config),
@@ -119,7 +119,9 @@ function processFrame(now) {
 
 function beginSession() {
   state.running = true;
-  state.seats = [];
+  state.seats = state.method === "crop"
+    ? state.cropSeats.map((cropSeat) => Object.assign(new Seat(), cropSeat))
+    : [];
   state.seatsConfirmed = false;
   state.lastPeople = [];
   state.queue = [];
@@ -159,7 +161,7 @@ function beginSession() {
   elements.stop.disabled = false;
   view.updateConfirmButton();
   view.updateRecordHud();
-  addEvent({ ev: `開始(${state.activeRecordMode})` });
+  addEvent({ ev: `開始(${state.activeRecordMode},${state.method})` });
   navigator.wakeLock?.request("screen")
     .then((lock) => state.wakeLock = lock)
     .catch(() => {});
@@ -190,7 +192,18 @@ function reset() {
 }
 
 function confirmSeats() {
-  if (!state.running || state.seatsConfirmed || !state.lastPeople.length) return;
+  if (!state.running || state.seatsConfirmed) return;
+
+  if (state.method === "crop") {
+    if (!state.seats.length) return;
+    state.seatsConfirmed = true;
+    addEvent({ ev: `席配置確定(${state.seats.length}席)` });
+    view.setConfirmed(true);
+    view.renderQueue(cancel);
+    view.showToast(`${state.seats.length}席を登録しました`);
+    return;
+  }
+  if (!state.lastPeople.length) return;
 
   const people = displayOrder([...state.lastPeople]);
   state.seats = registerSeatPositions(people).map((position, index) => {
@@ -213,7 +226,7 @@ function releaseSeats() {
   if (!state.seatsConfirmed) return;
 
   state.seatsConfirmed = false;
-  state.seats = [];
+  if (state.method !== "crop") state.seats = [];
   state.queue = [];
   addEvent({ ev: "人数確定解除" });
   view.setConfirmed(false);
@@ -221,8 +234,63 @@ function releaseSeats() {
   view.updateConfirmButton();
 }
 
+function syncCropSeats() {
+  state.cropSeats = state.seats.map(({ x, y, w }) => ({ x, y, w }));
+  saveSettings(state);
+}
+
+function selectCropSeat(index) {
+  state.selectedCropSeat = index;
+  view.draw(state.lastPeople);
+}
+
+function addCropSeat(event) {
+  if (state.method !== "crop" || !state.running || state.seatsConfirmed) return;
+  const rect = elements.canvas.getBoundingClientRect();
+  const videoWidth = elements.video.videoWidth;
+  const videoHeight = elements.video.videoHeight;
+  if (!videoWidth || !videoHeight) return;
+  let x = (event.clientX - rect.left) / rect.width;
+  const y = (event.clientY - rect.top) / rect.height;
+  if (state.config.mirror) x = 1 - x;
+  // 隣の人の枠と重なる位置にも席を置けるよう、選択になるのは頭の中心の近くを押したときだけにする
+  const aspect = videoHeight / videoWidth;
+  const selected = state.seats.findLastIndex((seat) => {
+    return Math.hypot(x - seat.x, (y - seat.y) * aspect) < seat.w * 0.3;
+  });
+  if (selected !== -1) {
+    selectCropSeat(selected);
+    return;
+  }
+  const width = state.seats.at(-1)?.w ?? 0.08;
+  state.seats.push(Object.assign(new Seat(), { x, y, w: width }));
+  selectCropSeat(state.seats.length - 1);
+  syncCropSeats();
+  view.updateConfirmButton();
+}
+
+function changeCropSize(factor) {
+  const seat = state.seats[state.selectedCropSeat];
+  if (!seat || state.seatsConfirmed) return;
+  seat.w = Math.min(1, Math.max(0.01, seat.w * factor));
+  syncCropSeats();
+  view.draw(state.lastPeople);
+}
+
+function deleteCropSeat() {
+  if (state.selectedCropSeat === null || state.seatsConfirmed) return;
+  state.seats.splice(state.selectedCropSeat, 1);
+  state.selectedCropSeat = state.seats.length ? Math.min(state.selectedCropSeat, state.seats.length - 1) : null;
+  syncCropSeats();
+  view.draw(state.lastPeople);
+}
+
 window.kyoshuConfirmSeats = confirmSeats;
 window.kyoshuReleaseSeats = releaseSeats;
+window.kyoshuSeats = () => {
+  const seats = state.seats.length ? state.seats : state.cropSeats;
+  return seats.map(({ x, y, w }) => ({ x, y, w }));
+};
 
 for (const name of ["over", "forearm", "elbow", "hold"]) {
   const input = document.querySelector(`#${name}`);
@@ -245,6 +313,36 @@ for (const name of ["over", "forearm", "elbow", "hold"]) {
 elements.model.value = state.config.model;
 elements.mirror.checked = state.config.mirror;
 elements.recordMode.value = state.recordMode;
+elements.method.value = state.method;
+elements.methodSetting.value = state.method;
+elements.resolution.value = state.resolutionChoice;
+elements.yoloSize.value = state.yoloSize;
+function updateMethodUi() {
+  const crop = state.method === "crop";
+  const yolo = state.method === "yolo";
+  elements.cropControls.hidden = !crop;
+  elements.yoloSizeLabel.hidden = !yolo;
+  elements.method.value = state.method;
+  elements.methodSetting.value = state.method;
+  view.updateConfirmButton();
+}
+
+function setMethod(method) {
+  if (!new Set(["whole", "crop", "yolo"]).has(method)) return;
+  if (state.method === method) return;
+  state.method = method;
+  if (method === "crop" && !state.config.cropModelUsed) {
+    state.config.model = "lite";
+    state.config.cropModelUsed = true;
+    elements.model.value = "lite";
+  }
+  saveSettings(state);
+  updateMethodUi();
+  if (state.running) sources.restart();
+}
+updateMethodUi();
+elements.method.onchange = (event) => setMethod(event.target.value);
+elements.methodSetting.onchange = (event) => setMethod(event.target.value);
 elements.mirror.onchange = (event) => {
   state.config.mirror = event.target.checked;
   saveSettings(state);
@@ -257,6 +355,15 @@ elements.model.onchange = (event) => {
 };
 elements.recordMode.onchange = (event) => {
   state.recordMode = event.target.value;
+  saveSettings(state);
+};
+elements.resolution.onchange = (event) => {
+  state.resolutionChoice = event.target.value;
+  saveSettings(state);
+  if (state.source === "camera" && state.running) sources.startCamera();
+};
+elements.yoloSize.onchange = (event) => {
+  state.yoloSize = event.target.value;
   saveSettings(state);
 };
 elements.defaults.onclick = () => {
@@ -281,6 +388,17 @@ elements.progressUndo.onclick = () => state.queue.length && cancel(state.queue.a
 elements.progressReset.onclick = reset;
 elements.confirmSeats.onclick = confirmSeats;
 elements.releaseSeats.onclick = releaseSeats;
+elements.canvas.onclick = addCropSeat;
+elements.cropGrow.onclick = () => changeCropSize(1.15);
+elements.cropShrink.onclick = () => changeCropSize(1 / 1.15);
+elements.cropDelete.onclick = deleteCropSeat;
+elements.cropClear.onclick = () => {
+  if (state.seatsConfirmed) return;
+  state.seats = [];
+  state.selectedCropSeat = null;
+  syncCropSeats();
+  view.draw(state.lastPeople);
+};
 elements.share.onclick = async () => {
   try {
     await logger.share();
@@ -351,6 +469,13 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 const params = new URLSearchParams(location.search);
+if (params.get("method")) {
+  setMethod(params.get("method"));
+}
+const urlSeats = parseSeats(params.get("seats"));
+if (urlSeats) {
+  state.cropSeats = urlSeats;
+}
 if (params.get("model")) {
   state.config.model = params.get("model");
   elements.model.value = state.config.model;

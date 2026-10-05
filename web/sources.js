@@ -106,14 +106,17 @@ export function createSources(state, view, vision, session) {
     try {
       await vision.ensureLandmarker();
       const deviceId = elements.camera.value;
+      const [wantedWidth, wantedHeight] = (state.resolutionChoice ?? "1280x720")
+        .split("x")
+        .map(Number);
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           ...(deviceId
             ? { deviceId: { exact: deviceId } }
             : { facingMode: "user" }),
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: wantedWidth },
+          height: { ideal: wantedHeight },
         },
       });
     } catch (error) {
@@ -138,23 +141,26 @@ export function createSources(state, view, vision, session) {
     session.begin();
     startRecorder(state.stream);
 
-    const loop = () => {
+    const loop = async () => {
       if (run !== runId || !state.running || state.source !== "camera") return;
 
-      session.processFrame((performance.now() - startedAt) / 1000);
+      await session.processFrame((performance.now() - startedAt) / 1000);
+      if (run !== runId || !state.running || state.source !== "camera") return;
       if (elements.video.requestVideoFrameCallback) {
         elements.video.requestVideoFrameCallback(loop);
       } else {
         requestAnimationFrame(loop);
       }
     };
-    loop();
+    await loop();
   }
 
   async function startFile(url, times) {
     stop();
     const run = runId;
     await vision.ensureLandmarker();
+    state.fileUrl = url;
+    state.fileTimes = times;
     elements.video.srcObject = null;
     elements.video.src = url;
     await new Promise((resolve, reject) => {
@@ -175,7 +181,7 @@ export function createSources(state, view, vision, session) {
         elements.video.duration - 0.001,
       );
       await new Promise((resolve) => elements.video.onseeked = resolve);
-      session.processFrame(times[index] ?? index * FILE_STEP);
+      await session.processFrame(times[index] ?? index * FILE_STEP);
       await yieldToBrowser();
     }
 
@@ -189,7 +195,13 @@ export function createSources(state, view, vision, session) {
     window.kyoshuDone = true;
   }
 
-  return { stop, listCameras, startCamera, startFile, setMirror };
+  function restart() {
+    if (state.source === "camera") return startCamera();
+    if (state.source === "file" && state.fileUrl) return startFile(state.fileUrl, state.fileTimes ?? []);
+    return undefined;
+  }
+
+  return { stop, listCameras, startCamera, startFile, setMirror, restart };
 }
 
 export function parseTimes(text) {

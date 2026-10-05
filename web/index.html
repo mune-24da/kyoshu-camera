@@ -37,6 +37,7 @@
     #view { display: block; width: 100%; height: auto; }
     #video { display: none; }
     #hud {
+      pointer-events: none;
       position: absolute;
       top: 0;
       left: 0;
@@ -263,6 +264,11 @@
       <div class="row normal-screen">
         <button id="startCam" class="primary">カメラで開始</button>
         <button id="stop" disabled>停止</button>
+        <select id="method" aria-label="骨格推定の方式">
+          <option value="whole">全体から探す(MediaPipe)</option>
+          <option value="crop">席ごとに切り出す(MediaPipe)</option>
+          <option value="yolo">全体から探す(YOLO)</option>
+        </select>
         <select id="camera" aria-label="カメラ">
           <option value="">カメラを選ぶ(開始後に一覧が出ます)</option>
         </select>
@@ -274,6 +280,13 @@
           <option value="video">録画+ログ</option>
         </select>
         <button id="confirmSeats" disabled>人数を確定(0人)</button>
+      </div>
+      <div class="row normal-screen" id="cropControls" hidden>
+        <span class="note">映像をタップして席の頭の中心を置きます。</span>
+        <button id="cropGrow">大きく</button>
+        <button id="cropShrink">小さく</button>
+        <button id="cropDelete">この席を消す</button>
+        <button id="cropClear">席を全部消す</button>
       </div>
       <div class="export">
         <h2>書き出し</h2>
@@ -288,11 +301,35 @@
         <summary>設定・検証用</summary>
         <div class="grid">
           <label>
+            方式
+            <select id="methodSetting">
+              <option value="whole">全体から探す(MediaPipe)</option>
+              <option value="crop">席ごとに切り出す(MediaPipe)</option>
+              <option value="yolo">全体から探す(YOLO)</option>
+            </select>
+          </label>
+          <label>
             骨格推定モデル
             <select id="model">
               <option value="lite">lite(軽い・粗い)</option>
               <option value="full" selected>full(標準)</option>
               <option value="heavy">heavy(重い・細かい)</option>
+            </select>
+          </label>
+          <label>
+            カメラ解像度
+            <select id="resolution">
+              <option value="1280x720">1280×720</option>
+              <option value="1920x1080">1920×1080</option>
+              <option value="3840x2160">3840×2160</option>
+            </select>
+          </label>
+          <label id="yoloSizeLabel">
+            YOLO の入力サイズ
+            <select id="yoloSize">
+              <option value="640">640</option>
+              <option value="960">960</option>
+              <option value="1280">1280</option>
             </select>
           </label>
           <label>

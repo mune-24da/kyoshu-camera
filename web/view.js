@@ -1,5 +1,6 @@
 import { L_EL, L_SH, L_WR, R_EL, R_SH, R_WR, ok } from "./detection.mjs";
 
+const HUD_DETAIL_MAX = 4;
 const ARM_LINES = [
   [L_SH, R_SH],
   [L_SH, L_EL],
@@ -22,10 +23,20 @@ export function createView(state) {
     "camera",
     "mirror",
     "model",
+    "method",
+    "methodSetting",
+    "resolution",
+    "yoloSize",
+    "yoloSizeLabel",
     "startCam",
     "undoLast",
     "reset",
     "confirmSeats",
+    "cropControls",
+    "cropGrow",
+    "cropShrink",
+    "cropDelete",
+    "cropClear",
     "recordMode",
     "progress",
     "progressNow",
@@ -93,8 +104,12 @@ export function createView(state) {
 
   function updateConfirmButton() {
     const peopleCount = state.lastPeople.length;
-    elements.confirmSeats.disabled = !state.running || state.seatsConfirmed || !peopleCount;
-    elements.confirmSeats.textContent = `人数を確定(${peopleCount}人)`;
+    const isCrop = state.method === "crop";
+    const count = isCrop ? state.seats.length : peopleCount;
+    elements.confirmSeats.disabled = !state.running || state.seatsConfirmed || !count;
+    elements.confirmSeats.textContent = isCrop
+      ? `席の配置を確定(${count}席)`
+      : `人数を確定(${count}人)`;
   }
 
   function updateRecordHud() {
@@ -157,12 +172,36 @@ export function createView(state) {
       }
     });
 
+    if (state.method === "crop") {
+      state.seats.forEach((seat, index) => {
+        const x = seat.x * width;
+        const y = seat.y * height;
+        const seatWidth = seat.w * width;
+        const left = Math.max(0, x - seatWidth / 2);
+        const top = Math.max(0, y - seatWidth * 0.9);
+        const right = Math.min(width, x + seatWidth / 2);
+        const bottom = Math.min(height, y + seatWidth * 1.1);
+        const raised = seat.raised;
+        context.strokeStyle = raised ? "#ffc400" : seat.tracked ? "#7cf07c" : "#ff7878";
+        if (state.selectedCropSeat === index) context.strokeStyle = "#4fc3f7";
+        context.lineWidth = unit * (state.selectedCropSeat === index ? 3 : 1.5);
+        context.strokeRect(mirrorX(right), top, -(right - left), bottom - top);
+        context.fillStyle = context.strokeStyle;
+        context.font = `bold ${14 * unit}px system-ui,sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(String(index + 1), mirrorX(x), Math.max(top - 10 * unit, 12 * unit));
+      });
+    }
+
     const marks = (conditions) => {
       return ["鼻", "腕", "肘"]
         .map((name, index) => name + (conditions[index] ? "○" : "×"))
         .join("");
     };
-    const rows = people.map((person) => {
+    // 条件の行は映像を覆うので、少人数のときだけ出す。席を映像の上で置く方式では出さない
+    const showRows = state.method !== "crop" && people.length <= HUD_DETAIL_MAX;
+    const rows = !showRows ? [] : people.map((person) => {
       const raised = state.seats[person.seat]?.raised;
       return `<div class="${raised ? "raised" : ""}">`
         + `席${person.seat + 1} 左 ${marks(person.c.left[1])}`
@@ -171,9 +210,13 @@ export function createView(state) {
     if (!people.length) {
       rows.push('<div class="warn">人が見つかりません(両肩が映るように)</div>');
     }
-    hud.innerHTML = `<div>継続 ${state.config.hold.toFixed(1)}秒 `
-      + `${state.fps.toFixed(1)}fps ${state.config.model}</div>`
-      + `<div>検出 ${state.detectedCount}人 / 採用 ${people.length}人</div>`
+    const modelLabel = state.method === "yolo" ? `yolo11n ${state.yoloSize}` : state.config.model;
+    const detected = state.method === "crop"
+      ? `席 ${state.seats.length} のうち人を追えた ${people.length}`
+      : `検出 ${state.detectedCount}人 / 採用 ${people.length}人`;
+    hud.innerHTML = `<div>${state.resolution || `${width}x${height}`} ${state.method} `
+      + `${state.delegate || ""} ${state.fps.toFixed(1)}fps ${modelLabel}</div>`
+      + `<div>${detected}</div>`
       + rows.join("");
     updateConfirmButton();
     updateRecordHud();
