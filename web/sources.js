@@ -1,4 +1,10 @@
 const FILE_STEP = 0.1;
+// 画面の描き替えに制御を返す。setTimeout は裏に回ったタブで1秒に1回へ絞られ、録画の判定が進まなくなる
+const yieldToBrowser = () => new Promise((resolve) => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = resolve;
+  channel.port2.postMessage(null);
+});
 const recordingType = () => {
   return [
     "video/mp4;codecs=avc1",
@@ -170,7 +176,7 @@ export function createSources(state, view, vision, session) {
       );
       await new Promise((resolve) => elements.video.onseeked = resolve);
       session.processFrame(times[index] ?? index * FILE_STEP);
-      await new Promise((resolve) => setTimeout(resolve));
+      await yieldToBrowser();
     }
 
     if (run !== runId) return;

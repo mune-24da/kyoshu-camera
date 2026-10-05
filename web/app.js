@@ -21,6 +21,7 @@ const { elements } = view;
 
 window.kyoshuEvents = state.events;
 window.kyoshuLog = () => state.logRows;
+window.kyoshuCounts = () => ({ detected: state.detectedHist, kept: state.keptHist });
 
 function addEvent(event, write = true) {
   const complete = { t: state.now ?? 0, ...event };
@@ -81,6 +82,10 @@ function processFrame(now) {
     });
   }
 
+  // 骨格推定が見つけた人数と、両肩が見えない・値が異常などで捨てた後の人数を分けて数える
+  state.detectedCount = result.landmarks.length;
+  state.detectedHist[state.detectedCount] = (state.detectedHist[state.detectedCount] ?? 0) + 1;
+  state.keptHist[people.length] = (state.keptHist[people.length] ?? 0) + 1;
   state.lastPeople = people;
   people.forEach((person) => {
     const seat = state.seats[person.seat];
@@ -121,6 +126,9 @@ function beginSession() {
   state.logRows = [];
   state.events = [];
   state.frameNo = -1;
+  state.detectedCount = 0;
+  state.detectedHist = {};
+  state.keptHist = {};
   state.fps = 0;
   state.lastFrameAt = 0;
   state.now = 0;

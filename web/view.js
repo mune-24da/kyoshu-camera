@@ -173,6 +173,7 @@ export function createView(state) {
     }
     hud.innerHTML = `<div>継続 ${state.config.hold.toFixed(1)}秒 `
       + `${state.fps.toFixed(1)}fps ${state.config.model}</div>`
+      + `<div>検出 ${state.detectedCount}人 / 採用 ${people.length}人</div>`
       + rows.join("");
     updateConfirmButton();
     updateRecordHud();

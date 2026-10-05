@@ -17,6 +17,11 @@ const csvHeader = [
   }),
 ];
 const pad = (value) => String(value).padStart(2, "0");
+const histogramText = (histogram) => {
+  return Object.entries(histogram)
+    .map(([people, frames]) => `${people}人=${frames}`)
+    .join(", ") || "なし";
+};
 const EVENT_LABELS = { raise: "挙手", lower: "解除", cancel: "取り消し", reset: "リセット" };
 
 export function sessionFileName(date = new Date()) {
@@ -109,6 +114,8 @@ export function createLogger(state) {
       `モデル: ${state.config.model} / ${state.delegate || "不明"}`,
       `基準: 鼻=${state.config.over}, 腕=${state.config.forearm}, 肘=${state.config.elbow}, 継続=${state.config.hold}秒`,
       `平均fps: ${state.fps.toFixed(1)} / 記録モード: ${state.activeRecordMode}`,
+      `検出した人数ごとのコマ数: ${histogramText(state.detectedHist)}`,
+      `採用した人数ごとのコマ数: ${histogramText(state.keptHist)}`,
       `人数確定: ${seats}`,
       `イベント(${state.events.length}件):${events ? `\n${events}` : " なし"}`
         + `${state.events.length > 120 ? "\n…以降省略" : ""}`,
