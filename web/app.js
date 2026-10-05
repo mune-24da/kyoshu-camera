@@ -327,15 +327,16 @@ function updateMethodUi() {
   view.updateConfirmButton();
 }
 
+function modelSlot() {
+  return state.method === "crop" ? "crop" : "whole";
+}
+
 function setMethod(method) {
   if (!new Set(["whole", "crop", "yolo"]).has(method)) return;
   if (state.method === method) return;
   state.method = method;
-  if (method === "crop" && !state.config.cropModelUsed) {
-    state.config.model = "lite";
-    state.config.cropModelUsed = true;
-    elements.model.value = "lite";
-  }
+  state.config.model = state.models[modelSlot()];
+  elements.model.value = state.config.model;
   saveSettings(state);
   updateMethodUi();
   if (state.running) sources.restart();
@@ -350,6 +351,7 @@ elements.mirror.onchange = (event) => {
 };
 elements.model.onchange = (event) => {
   state.config.model = event.target.value;
+  state.models[modelSlot()] = state.config.model;
   saveSettings(state);
   addEvent({ ev: `モデル変更(${state.config.model})` });
 };
@@ -357,6 +359,10 @@ elements.recordMode.onchange = (event) => {
   state.recordMode = event.target.value;
   saveSettings(state);
 };
+elements.zoom.oninput = async (event) => {
+  await sources.setZoom(+event.target.value);
+};
+elements.zoom.onchange = (event) => addEvent({ ev: `ズーム変更(${event.target.value})` });
 elements.resolution.onchange = (event) => {
   state.resolutionChoice = event.target.value;
   saveSettings(state);

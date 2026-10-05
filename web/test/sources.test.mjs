@@ -26,6 +26,10 @@ function setup() {
       stop: {},
       camera: { value: "", replaceChildren: () => {} },
       mirror: {},
+      zoom: {},
+      zoomV: {},
+      zoomRow: {},
+      zoomNote: {},
     },
     showToast: () => {},
     updateRecordHud: () => {},
@@ -37,7 +41,7 @@ function setup() {
   });
   // 映像の1コマ: 登録済みのコールバックを全部呼ぶ(止めた回の分も残っている)
   const presentFrame = () => callbacks.splice(0).forEach((callback) => callback());
-  return { sources, frames, presentFrame };
+  return { sources, frames, presentFrame, elements: view.elements };
 }
 
 test("カメラを開始し直しても、1コマにつき判定は1回だけ走る", async () => {
@@ -66,4 +70,30 @@ test("カメラを開始し直しても、1コマにつき判定は1回だけ走
   presentFrame();
   await new Promise(queueMicrotask);
   assert.equal(frames.length, 2);
+});
+
+test("ズームは端末が対応しているときだけ操作の欄を出す", async () => {
+  const withZoom = { min: 1, max: 5, step: 0.1 };
+  for (const [capabilities, rowHidden] of [[{ zoom: withZoom }, false], [{}, true]]) {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          getUserMedia: async () => ({
+            getTracks: () => [{ stop: () => {} }],
+            getVideoTracks: () => [{
+              getSettings: () => ({ width: 1280, height: 720, zoom: 1 }),
+              getCapabilities: () => capabilities,
+              label: "",
+            }],
+          }),
+          enumerateDevices: async () => [],
+        },
+      },
+    });
+    const { sources, elements } = setup();
+    await sources.startCamera();
+    assert.equal(elements.zoomRow.hidden, rowHidden);
+    assert.equal(elements.zoomNote.hidden, !rowHidden);
+  }
 });

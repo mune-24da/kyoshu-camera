@@ -111,7 +111,8 @@ export function createLogger(state) {
       "挙手カメラ 記録要約",
       `日時: ${state.startedAt?.toLocaleString("ja-JP") ?? "未開始"}`,
       `ブラウザ: ${navigator.userAgent}`,
-      `カメラ: ${state.cameraName || "不明"} / ${state.resolution || "不明"}`,
+      `カメラ: ${state.cameraName || "不明"} / ${state.resolution || "不明"}`
+        + ` / ズーム: ${state.zoom ?? "操作不可"}`,
       `方式: ${state.method} / モデル: ${modelLabel} / ${state.delegate || "不明"}`,
       `YOLO入力: ${state.yoloSize ?? "-"} / 希望解像度: ${state.resolutionChoice ?? "-"}`,
       `基準: 鼻=${state.config.over}, 腕=${state.config.forearm}, 肘=${state.config.elbow}, 継続=${state.config.hold}秒`,

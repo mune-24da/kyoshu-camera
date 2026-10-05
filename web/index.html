@@ -141,6 +141,7 @@
     }
     label { display: block; color: var(--dim); font-size: 14px; }
     label input[type=range] { width: 100%; }
+    label.zoom { flex: 1; min-width: 220px; }
     label b { color: var(--text); font-weight: normal; }
     .note { margin: 8px 0 0; color: var(--dim); font-size: 13px; }
     #progress { display: none; }
@@ -272,7 +273,22 @@
         <select id="camera" aria-label="カメラ">
           <option value="">カメラを選ぶ(開始後に一覧が出ます)</option>
         </select>
+        <select id="resolution" aria-label="カメラ解像度">
+          <option value="1280x720">解像度 1280×720</option>
+          <option value="1920x1080">解像度 1920×1080</option>
+          <option value="3840x2160">解像度 3840×2160</option>
+        </select>
       </div>
+      <div class="row normal-screen" id="zoomRow" hidden>
+        <label class="zoom">
+          ズーム <b id="zoomV"></b>
+          <input type="range" id="zoom">
+        </label>
+      </div>
+      <p class="note normal-screen" id="zoomNote" hidden>
+        この端末のブラウザではズームを操作できません。
+        カメラの一覧に望遠・広角・超広角が別々に出る場合は、そこで切り替えてください。
+      </p>
       <div class="row normal-screen">
         <select id="recordMode" aria-label="記録モード">
           <option value="none">記録なし</option>
@@ -314,14 +330,6 @@
               <option value="lite">lite(軽い・粗い)</option>
               <option value="full" selected>full(標準)</option>
               <option value="heavy">heavy(重い・細かい)</option>
-            </select>
-          </label>
-          <label>
-            カメラ解像度
-            <select id="resolution">
-              <option value="1280x720">1280×720</option>
-              <option value="1920x1080">1920×1080</option>
-              <option value="3840x2160">3840×2160</option>
             </select>
           </label>
           <label id="yoloSizeLabel">

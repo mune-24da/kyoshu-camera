@@ -2,14 +2,16 @@ import { DEFAULT_DETECTION_CONFIG } from "./detection.mjs";
 
 export function createState() {
   const saved = safeRead();
+  // 全体から探す方式は細かいモデル、席ごとに切り出す方式は席の数だけ回すので軽いモデルが向く
+  const models = { whole: "full", crop: "lite", ...saved.models };
   return {
     config: {
       ...DEFAULT_DETECTION_CONFIG,
       ...saved.config,
-      model: saved.config?.model ?? "full",
+      model: models[saved.method === "crop" ? "crop" : "whole"],
       mirror: saved.config?.mirror ?? true,
-      cropModelUsed: saved.config?.cropModelUsed ?? false,
     },
+    models,
     hasMirrorOverride: false,
     landmarker: null,
     landmarkerModel: null,
@@ -70,10 +72,9 @@ export function saveSettings(state) {
           forearm: state.config.forearm,
           elbow: state.config.elbow,
           hold: state.config.hold,
-          model: state.config.model,
           mirror: state.config.mirror,
-          cropModelUsed: state.config.cropModelUsed,
         },
+        models: state.models,
         recordMode: state.recordMode,
         method: state.method,
         resolutionChoice: state.resolutionChoice,

@@ -99,6 +99,45 @@ export function createSources(state, view, vision, session) {
     elements.mirror.checked = mirror;
   }
 
+  // ズームはブラウザと端末によって使えない。使えるときだけ操作の欄を出す
+  function setupZoom(track) {
+    const range = track.getCapabilities?.().zoom;
+    const usable = Boolean(range && range.max > range.min);
+    elements.zoomRow.hidden = !usable;
+    elements.zoomNote.hidden = usable;
+    state.zoom = null;
+    if (!usable) return;
+    elements.zoom.min = range.min;
+    elements.zoom.max = range.max;
+    elements.zoom.step = range.step || 0.1;
+    state.zoom = track.getSettings().zoom ?? range.min;
+    elements.zoom.value = state.zoom;
+    elements.zoomV.textContent = `${(+state.zoom).toFixed(1)}倍`;
+  }
+
+  async function setZoom(value) {
+    const track = state.stream?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: value }] });
+      state.zoom = value;
+      elements.zoomV.textContent = `${(+value).toFixed(1)}倍`;
+    } catch (error) {
+      view.showToast(`ズームを変えられません: ${error.message}`, 5);
+    }
+  }
+
+  function reportResolution(track) {
+    const { width, height } = track.getSettings();
+    const wanted = state.resolutionChoice ?? "1280x720";
+    const [wantedLong, wantedShort] = wanted.split("x").map(Number);
+    // 縦持ちでは幅と高さが入れ替わって届くので、長辺・短辺で比べる
+    const matched = Math.max(width, height) === wantedLong && Math.min(width, height) === wantedShort;
+    if (!matched) {
+      view.showToast(`解像度は ${wanted} を希望しましたが、実際は ${width}x${height} です`, 6);
+    }
+  }
+
   async function startCamera() {
     stop();
     const run = runId;
@@ -137,6 +176,9 @@ export function createSources(state, view, vision, session) {
       setMirror(isFrontCamera(state.stream.getVideoTracks()[0]));
     }
     state.source = "camera";
+    const track = state.stream.getVideoTracks()[0];
+    setupZoom(track);
+    reportResolution(track);
     const startedAt = performance.now();
     session.begin();
     startRecorder(state.stream);
@@ -201,7 +243,7 @@ export function createSources(state, view, vision, session) {
     return undefined;
   }
 
-  return { stop, listCameras, startCamera, startFile, setMirror, restart };
+  return { stop, listCameras, startCamera, startFile, setMirror, setZoom, restart };
 }
 
 export function parseTimes(text) {
