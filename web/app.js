@@ -1,6 +1,7 @@
 import {
   DEFAULT_DETECTION_CONFIG,
   L_SH,
+  NOSE,
   R_SH,
   Seat,
   armRaised,
@@ -8,7 +9,17 @@ import {
 } from "./detection.mjs";
 import { createLogger, sessionFileName } from "./logging.js";
 import { allocateSeats, registerSeatPositions } from "./seats.mjs";
-import { parseSeats } from "./crop.mjs";
+import {
+  defaultRectAt,
+  hitTest,
+  moveRect,
+  parseSeats,
+  rectFromDrag,
+  resizeRect,
+  scaleRect,
+  seatsFromPeople,
+  toRectSeat,
+} from "./crop.mjs";
 import { createSources, parseTimes } from "./sources.js";
 import { createState, saveSettings } from "./state.js";
 import { createView } from "./view.js";
@@ -119,9 +130,13 @@ async function processFrame(now) {
 
 function beginSession() {
   state.running = true;
+  const { videoWidth, videoHeight } = elements.video;
   state.seats = state.method === "crop"
-    ? state.cropSeats.map((cropSeat) => Object.assign(new Seat(), cropSeat))
+    ? state.cropSeats.map((cropSeat) => {
+      return Object.assign(new Seat(), toRectSeat(cropSeat, videoWidth, videoHeight));
+    })
     : [];
+  state.selectedCropSeat = null;
   state.seatsConfirmed = false;
   state.lastPeople = [];
   state.queue = [];
@@ -235,7 +250,7 @@ function releaseSeats() {
 }
 
 function syncCropSeats() {
-  state.cropSeats = state.seats.map(({ x, y, w }) => ({ x, y, w }));
+  state.cropSeats = state.seats.map(({ left, top, width, height }) => ({ left, top, width, height }));
   saveSettings(state);
 }
 
@@ -244,37 +259,175 @@ function selectCropSeat(index) {
   view.draw(state.lastPeople);
 }
 
-function addCropSeat(event) {
-  if (state.method !== "crop" || !state.running || state.seatsConfirmed) return;
-  const rect = elements.canvas.getBoundingClientRect();
-  const videoWidth = elements.video.videoWidth;
-  const videoHeight = elements.video.videoHeight;
-  if (!videoWidth || !videoHeight) return;
-  let x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
-  if (state.config.mirror) x = 1 - x;
-  // 隣の人の枠と重なる位置にも席を置けるよう、選択になるのは頭の中心の近くを押したときだけにする
-  const aspect = videoHeight / videoWidth;
-  const selected = state.seats.findLastIndex((seat) => {
-    return Math.hypot(x - seat.x, (y - seat.y) * aspect) < seat.w * 0.3;
-  });
-  if (selected !== -1) {
-    selectCropSeat(selected);
-    return;
-  }
-  const width = state.seats.at(-1)?.w ?? 0.08;
-  state.seats.push(Object.assign(new Seat(), { x, y, w: width }));
-  selectCropSeat(state.seats.length - 1);
-  syncCropSeats();
-  view.updateConfirmButton();
+function canEditSeats() {
+  return state.method === "crop" && !state.seatsConfirmed
+    && !elements.canvas.hidden && elements.video.videoWidth > 0;
 }
 
-function changeCropSize(factor) {
-  const seat = state.seats[state.selectedCropSeat];
-  if (!seat || state.seatsConfirmed) return;
-  seat.w = Math.min(1, Math.max(0.01, seat.w * factor));
+function seatPoint(event) {
+  const rect = elements.canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width;
+  return {
+    x: state.config.mirror ? 1 - x : x,
+    y: (event.clientY - rect.top) / rect.height,
+  };
+}
+
+function setSeatRect(index, rect) {
+  Object.assign(state.seats[index], rect);
+  view.draw(state.lastPeople);
+}
+
+function addSeat(rect) {
+  state.seats.push(Object.assign(new Seat(), rect));
+  state.selectedCropSeat = state.seats.length - 1;
+  syncCropSeats();
+  view.updateConfirmButton();
+  view.draw(state.lastPeople);
+}
+
+// 映像の上での席の操作。1本指(マウス)は「枠を作る・動かす・角で大きさを変える」、2本指は選択中の枠の拡大縮小
+const seatPointers = new Map();
+let seatGesture = null;
+const TAP_DISTANCE = 0.015;
+const HANDLE_PX = 24;
+
+function startSeatGesture(event) {
+  if (!canEditSeats()) return;
+  event.preventDefault();
+  try {
+    elements.canvas.setPointerCapture(event.pointerId);
+  } catch {
+    // 指やマウスを捕まえられなくても、映像の上で動かしている間は操作を続けられる
+  }
+  const point = seatPoint(event);
+  seatPointers.set(event.pointerId, point);
+
+  if (seatPointers.size === 2 && state.seats[state.selectedCropSeat]) {
+    const [first, second] = [...seatPointers.values()];
+    seatGesture = {
+      type: "pinch",
+      distance: Math.hypot(first.x - second.x, first.y - second.y),
+      rect: toRectSeat(state.seats[state.selectedCropSeat]),
+    };
+    return;
+  }
+  if (seatPointers.size !== 1) return;
+
+  const bounds = elements.canvas.getBoundingClientRect();
+  const hit = hitTest(
+    state.seats,
+    state.selectedCropSeat,
+    point,
+    HANDLE_PX / bounds.width,
+    HANDLE_PX / bounds.height,
+  );
+  if (!hit) {
+    seatGesture = { type: "create", start: point, last: point };
+    return;
+  }
+  state.selectedCropSeat = hit.index;
+  seatGesture = {
+    type: hit.part === "body" ? "move" : "resize",
+    part: hit.part,
+    start: point,
+    rect: toRectSeat(state.seats[hit.index]),
+  };
+  view.draw(state.lastPeople);
+}
+
+function moveSeatGesture(event) {
+  if (!seatGesture || !seatPointers.has(event.pointerId)) return;
+  event.preventDefault();
+  const point = seatPoint(event);
+  seatPointers.set(event.pointerId, point);
+  const index = state.selectedCropSeat;
+
+  if (seatGesture.type === "pinch") {
+    if (seatPointers.size < 2) return;
+    const [first, second] = [...seatPointers.values()];
+    const distance = Math.hypot(first.x - second.x, first.y - second.y);
+    setSeatRect(index, scaleRect(seatGesture.rect, distance / seatGesture.distance));
+  } else if (seatGesture.type === "move") {
+    const dx = point.x - seatGesture.start.x;
+    const dy = point.y - seatGesture.start.y;
+    setSeatRect(index, moveRect(seatGesture.rect, dx, dy));
+  } else if (seatGesture.type === "resize") {
+    setSeatRect(index, resizeRect(seatGesture.rect, seatGesture.part, point));
+  } else {
+    seatGesture.last = point;
+    view.draw(state.lastPeople);
+    view.drawDraftSeat(rectFromDrag(seatGesture.start, point));
+  }
+}
+
+function endSeatGesture(event) {
+  if (!seatPointers.has(event.pointerId)) return;
+  seatPointers.delete(event.pointerId);
+  const gesture = seatGesture;
+  if (!gesture) return;
+  // 2本指の片方だけを離したときは、残りの指で別の操作が始まらないよう、全部離れるまで待つ
+  if (gesture.type === "pinch" && seatPointers.size > 0) return;
+  seatGesture = null;
+
+  if (gesture.type === "create" && event.type !== "pointercancel") {
+    const { start, last } = gesture;
+    const dragged = Math.hypot(last.x - start.x, last.y - start.y) > TAP_DISTANCE;
+    const { videoWidth, videoHeight } = elements.video;
+    addSeat(dragged
+      ? rectFromDrag(start, last)
+      : defaultRectAt(start, state.seats.at(-1), videoWidth, videoHeight));
+    return;
+  }
   syncCropSeats();
   view.draw(state.lastPeople);
+}
+
+function wheelSeat(event) {
+  const seat = state.seats[state.selectedCropSeat];
+  if (!canEditSeats() || !seat) return;
+  event.preventDefault();
+  setSeatRect(state.selectedCropSeat, scaleRect(toRectSeat(seat), event.deltaY < 0 ? 1.06 : 1 / 1.06));
+  syncCropSeats();
+}
+
+async function autoPlaceSeats() {
+  if (!canEditSeats()) {
+    view.showToast("先にカメラを開始してください");
+    return;
+  }
+  if (state.seats.length && !confirm("今ある席を消して、自動で置き直しますか？")) return;
+  elements.cropAuto.disabled = true;
+  view.showToast("映っている人を探しています…", 60);
+  try {
+    const { videoWidth, videoHeight } = elements.video;
+    const people = await vision.findPeopleForSeats(elements.video);
+    const rects = seatsFromPeople(
+      people,
+      videoWidth,
+      videoHeight,
+      { nose: NOSE, leftShoulder: L_SH, rightShoulder: R_SH },
+      state.config.mirror,
+    );
+    state.seats = rects.map((rect) => Object.assign(new Seat(), rect));
+    state.selectedCropSeat = null;
+    state.queue = [];
+    syncCropSeats();
+    view.renderQueue(cancel);
+    view.updateConfirmButton();
+    view.draw(state.lastPeople);
+    addEvent({ ev: `席を自動で配置(${rects.length}席)` });
+    view.showToast(
+      rects.length
+        ? `${rects.length}席を置きました。足りない席は足し、ずれた枠は直してください`
+        : "人を見つけられませんでした。頭を押して席を置いてください",
+      6,
+    );
+  } catch (error) {
+    view.showToast(`自動で置けませんでした: ${error.message}`, 6);
+  } finally {
+    elements.cropAuto.disabled = false;
+  }
 }
 
 function deleteCropSeat() {
@@ -288,9 +441,9 @@ function deleteCropSeat() {
 window.kyoshuConfirmSeats = confirmSeats;
 window.kyoshuReleaseSeats = releaseSeats;
 window.kyoshuSeats = () => {
-  const seats = state.seats.length ? state.seats : state.cropSeats;
-  return seats.map(({ x, y, w }) => ({ x, y, w }));
+  return state.seats.map(({ left, top, width, height }) => ({ left, top, width, height }));
 };
+window.kyoshuAutoSeats = autoPlaceSeats;
 
 for (const name of ["over", "forearm", "elbow", "hold"]) {
   const input = document.querySelector(`#${name}`);
@@ -395,9 +548,12 @@ elements.progressReset.onclick = reset;
 elements.confirmSeats.onclick = confirmSeats;
 elements.cropConfirm.onclick = confirmSeats;
 elements.releaseSeats.onclick = releaseSeats;
-elements.canvas.onclick = addCropSeat;
-elements.cropGrow.onclick = () => changeCropSize(1.15);
-elements.cropShrink.onclick = () => changeCropSize(1 / 1.15);
+elements.canvas.addEventListener("pointerdown", startSeatGesture);
+elements.canvas.addEventListener("pointermove", moveSeatGesture);
+elements.canvas.addEventListener("pointerup", endSeatGesture);
+elements.canvas.addEventListener("pointercancel", endSeatGesture);
+elements.canvas.addEventListener("wheel", wheelSeat, { passive: false });
+elements.cropAuto.onclick = autoPlaceSeats;
 elements.cropDelete.onclick = deleteCropSeat;
 elements.cropClear.onclick = () => {
   if (state.seatsConfirmed) return;

@@ -99,6 +99,11 @@ export function createLogger(state) {
       .join("\n");
     const seats = state.seatsConfirmed
       ? state.seats.map((seat, index) => {
+        if (seat.left !== undefined) {
+          const percent = (value) => `${(value * 100).toFixed(1)}%`;
+          return `席${index + 1}: 左${percent(seat.left)} 上${percent(seat.top)}`
+            + ` 幅${percent(seat.width)} 高さ${percent(seat.height)}`;
+        }
         const xCoordinate = (seat.registeredX ?? seat.x).toFixed(0);
         const yCoordinate = (seat.registeredY ?? seat.y).toFixed(0);
         const shoulderWidth = (seat.registeredSw ?? seat.sw).toFixed(0);

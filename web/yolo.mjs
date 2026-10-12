@@ -18,6 +18,10 @@ const COCO_TO_MEDIAPIPE = new Map([
 ]);
 
 export function yoloRowsToPeople(data, scale, confidence = 0.25) {
+  return yoloRows(data, scale, confidence).map((row) => row.points);
+}
+
+export function yoloRows(data, scale, confidence = 0.25) {
   const people = [];
   for (let offset = 0; offset + 56 < data.length; offset += 57) {
     if (data[offset + 4] < confidence) continue;
@@ -30,7 +34,8 @@ export function yoloRowsToPeople(data, scale, confidence = 0.25) {
         v: data[point + 2],
       };
     }
-    people.push(points);
+    const box = [0, 1, 2, 3].map((index) => data[offset + index] / scale);
+    people.push({ box, points });
   }
   return people;
 }

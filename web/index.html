@@ -38,6 +38,8 @@
     }
     #view { display: block; width: 100%; height: auto; }
     #video { display: none; }
+    /* 席の枠を指で動かしている間に、ページがスクロールや拡大をしないようにする */
+    #view.seat-editing { touch-action: none; cursor: crosshair; }
     #hud {
       pointer-events: none;
       position: absolute;
@@ -258,12 +260,15 @@
       <div class="queue normal-screen" id="cropControls" hidden>
         <h2>席を置く</h2>
         <p class="note">
-          カメラを開始してから、映像の中の人の頭を1人ずつタップします。押した順に席1、席2…になります。
-          席の頭のあたりを押すと選択でき、下のボタンで直せます。
+          カメラを開始してから「自動で席を置く」を押すと、見つかった人に枠が付きます。
+          足りない席は、映像の上で人の頭を押すか、囲むようにドラッグして足します。
+        </p>
+        <p class="note">
+          枠の直し方: 枠の中をドラッグで移動、四隅の■をドラッグで大きさを変更。
+          2本指でつまむ・マウスのホイールでも大きさを変えられます。
         </p>
         <div class="row">
-          <button id="cropGrow">大きく</button>
-          <button id="cropShrink">小さく</button>
+          <button id="cropAuto">自動で席を置く</button>
           <button id="cropDelete">この席を消す</button>
           <button id="cropClear">席を全部消す</button>
         </div>

@@ -38,8 +38,7 @@ export function createView(state) {
     "confirmSeats",
     "cropControls",
     "cropConfirm",
-    "cropGrow",
-    "cropShrink",
+    "cropAuto",
     "cropDelete",
     "cropClear",
     "recordMode",
@@ -118,6 +117,7 @@ export function createView(state) {
     elements.confirmSeats.hidden = isCrop;
     elements.cropConfirm.disabled = elements.confirmSeats.disabled;
     elements.cropConfirm.textContent = `席の配置を確定(${count}席)`;
+    elements.canvas.classList.toggle("seat-editing", isCrop && !state.seatsConfirmed);
   }
 
   function updateRecordHud() {
@@ -181,24 +181,32 @@ export function createView(state) {
     });
 
     if (state.method === "crop") {
+      // 四隅のつまみは、画面上でいつも同じ大きさ(約14px)に見えるようにする
+      const handle = 14 * (width / (canvas.getBoundingClientRect().width || width));
       state.seats.forEach((seat, index) => {
-        const x = seat.x * width;
-        const y = seat.y * height;
-        const seatWidth = seat.w * width;
-        const left = Math.max(0, x - seatWidth / 2);
-        const top = Math.max(0, y - seatWidth * 0.9);
-        const right = Math.min(width, x + seatWidth / 2);
-        const bottom = Math.min(height, y + seatWidth * 1.1);
-        const raised = seat.raised;
-        context.strokeStyle = raised ? "#ffc400" : seat.tracked ? "#7cf07c" : "#ff7878";
-        if (state.selectedCropSeat === index) context.strokeStyle = "#4fc3f7";
-        context.lineWidth = unit * (state.selectedCropSeat === index ? 3 : 1.5);
+        const left = seat.left * width;
+        const top = seat.top * height;
+        const right = left + seat.width * width;
+        const bottom = top + seat.height * height;
+        const selected = state.selectedCropSeat === index && !state.seatsConfirmed;
+        context.strokeStyle = seat.raised ? "#ffc400" : seat.tracked ? "#7cf07c" : "#ff7878";
+        if (selected) context.strokeStyle = "#4fc3f7";
+        context.lineWidth = unit * (selected ? 3 : 1.5);
         context.strokeRect(mirrorX(right), top, -(right - left), bottom - top);
         context.fillStyle = context.strokeStyle;
+        if (selected) {
+          for (const [cornerX, cornerY] of [[left, top], [right, top], [left, bottom], [right, bottom]]) {
+            context.fillRect(mirrorX(cornerX) - handle / 2, cornerY - handle / 2, handle, handle);
+          }
+        }
         context.font = `bold ${14 * unit}px system-ui,sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.fillText(String(index + 1), mirrorX(x), Math.max(top - 10 * unit, 12 * unit));
+        context.fillText(
+          String(index + 1),
+          mirrorX((left + right) / 2),
+          Math.max(top - 10 * unit, 12 * unit),
+        );
       });
     }
 
@@ -216,9 +224,9 @@ export function createView(state) {
         + ` 右 ${marks(person.c.right[1])}${raised ? " 挙手" : ""}</div>`;
     });
     if (state.method === "crop" && !state.seats.length) {
-      rows.push('<div class="warn">映像の中の人の頭をタップして、席を置いてください</div>');
+      rows.push('<div class="warn">「自動で席を置く」を押すか、人の頭を押して席を置いてください</div>');
     } else if (state.method === "crop" && !people.length) {
-      rows.push('<div class="warn">席の枠の中に人を追えていません(枠を大きくしてみてください)</div>');
+      rows.push('<div class="warn">席の枠の中に人を追えていません(枠を体に合わせて直してください)</div>');
     } else if (!people.length) {
       rows.push('<div class="warn">人が見つかりません(両肩が映るように)</div>');
     }
@@ -234,8 +242,22 @@ export function createView(state) {
     updateRecordHud();
   }
 
+  // 指でなぞって作っている途中の枠
+  function drawDraftSeat(rect) {
+    const { canvas } = elements;
+    const left = rect.left * canvas.width;
+    const right = left + rect.width * canvas.width;
+    const drawLeft = state.config.mirror ? canvas.width - right : left;
+    context.strokeStyle = "#4fc3f7";
+    context.lineWidth = Math.max(2, canvas.width / 400) * 2;
+    context.setLineDash([12, 8]);
+    context.strokeRect(drawLeft, rect.top * canvas.height, right - left, rect.height * canvas.height);
+    context.setLineDash([]);
+  }
+
   return {
     elements,
+    drawDraftSeat,
     showToast,
     renderQueue,
     setConfirmed,

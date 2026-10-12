@@ -1,5 +1,5 @@
 import { cropRect, mapCropPoint } from "./crop.mjs";
-import { yoloInputSize, yoloRowsToPeople } from "./yolo.mjs";
+import { yoloInputSize, yoloRows } from "./yolo.mjs";
 
 const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const ORT_DIST = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
@@ -13,6 +13,7 @@ export function createVision(state, view) {
   let yoloCanvas = null;
   let yoloSession = null;
   let ort = null;
+  let yoloDelegate = "";
 
   async function loadPose() {
     if (pose) return pose;
@@ -55,19 +56,23 @@ export function createVision(state, view) {
       yoloSession = await ort.InferenceSession.create("models/yolo11n-pose.onnx", {
         executionProviders: ["webgpu"],
       });
-      state.delegate = "GPU";
+      yoloDelegate = "GPU";
     } catch (error) {
       console.warn("WebGPU で動かせないので WASM に切り替える", error);
       yoloSession = await ort.InferenceSession.create("models/yolo11n-pose.onnx", {
         executionProviders: ["wasm"],
       });
-      state.delegate = "CPU";
+      yoloDelegate = "CPU";
     }
     view.showToast("", 0);
   }
 
   async function ensureLandmarker() {
-    if (state.method === "yolo") return ensureYolo();
+    if (state.method === "yolo") {
+      await ensureYolo();
+      state.delegate = yoloDelegate;
+      return;
+    }
     return ensureMediaPipe(state.method === "crop" ? "IMAGE" : "VIDEO");
   }
 
@@ -103,9 +108,9 @@ export function createVision(state, view) {
     return { detectedCount: state.seats.length, detections };
   }
 
-  async function yolo(video) {
+  async function runYolo(video, longSide) {
     yoloCanvas ??= document.createElement("canvas");
-    const size = yoloInputSize(video.videoWidth, video.videoHeight, +state.yoloSize);
+    const size = yoloInputSize(video.videoWidth, video.videoHeight, longSide);
     yoloCanvas.width = size.width;
     yoloCanvas.height = size.height;
     const context = yoloCanvas.getContext("2d", { willReadFrequently: true });
@@ -122,8 +127,18 @@ export function createVision(state, view) {
     }
     const tensor = new ort.Tensor("float32", input, [1, 3, size.height, size.width]);
     const output = await yoloSession.run({ images: tensor });
-    const points = yoloRowsToPeople(output.output0.data, size.scale);
-    return { detectedCount: points.length, detections: points };
+    return yoloRows(output.output0.data, size.scale);
+  }
+
+  async function yolo(video) {
+    const rows = await runYolo(video, +state.yoloSize);
+    return { detectedCount: rows.length, detections: rows.map((row) => row.points) };
+  }
+
+  // 席の候補を出すための1回きりの検出。小さく映った人も拾えるよう、いちばん大きい入力で回す
+  async function findPeopleForSeats(video) {
+    await ensureYolo();
+    return runYolo(video, 1280);
   }
 
   async function detect(video) {
@@ -132,5 +147,5 @@ export function createVision(state, view) {
     return whole(video);
   }
 
-  return { ensureLandmarker, detect };
+  return { ensureLandmarker, detect, findPeopleForSeats };
 }
