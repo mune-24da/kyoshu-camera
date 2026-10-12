@@ -47,9 +47,9 @@ export function createVision(state, view) {
     view.showToast("", 0);
   }
 
-  async function ensureYolo() {
+  async function ensureYolo(message = "YOLOモデルを読み込んでいます…") {
     if (yoloSession) return;
-    view.showToast("YOLOモデルを読み込んでいます…", 60);
+    view.showToast(message, 60);
     ort = await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.webgpu.min.mjs");
     ort.env.wasm.wasmPaths = ORT_DIST;
     try {
@@ -137,7 +137,7 @@ export function createVision(state, view) {
 
   // 席の候補を出すための1回きりの検出。小さく映った人も拾えるよう、いちばん大きい入力で回す
   async function findPeopleForSeats(video) {
-    await ensureYolo();
+    await ensureYolo("映っている人を探す準備をしています…(初回だけ少し待ちます)");
     return runYolo(video, 1280);
   }
 
