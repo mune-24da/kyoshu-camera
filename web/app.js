@@ -393,6 +393,7 @@ elements.reset.onclick = reset;
 elements.progressUndo.onclick = () => state.queue.length && cancel(state.queue.at(-1));
 elements.progressReset.onclick = reset;
 elements.confirmSeats.onclick = confirmSeats;
+elements.cropConfirm.onclick = confirmSeats;
 elements.releaseSeats.onclick = releaseSeats;
 elements.canvas.onclick = addCropSeat;
 elements.cropGrow.onclick = () => changeCropSize(1.15);

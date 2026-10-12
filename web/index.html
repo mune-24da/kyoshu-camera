@@ -17,6 +17,8 @@
       --ng: #ff7878;
     }
     * { box-sizing: border-box; }
+    /* .row などの display 指定が hidden 属性より強く、隠したはずの欄が出てしまうのを防ぐ */
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       background: var(--bg);
@@ -228,6 +230,7 @@
         overflow-y: auto;
       }
       main:not(.progress-layout) .queue { margin-top: 0; }
+      main:not(.progress-layout) .queue + .queue { margin-top: 10px; }
       main:not(.progress-layout) .grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -252,6 +255,22 @@
       </div>
     </section>
     <div class="side">
+      <div class="queue normal-screen" id="cropControls" hidden>
+        <h2>席を置く</h2>
+        <p class="note">
+          カメラを開始してから、映像の中の人の頭を1人ずつタップします。押した順に席1、席2…になります。
+          席の頭のあたりを押すと選択でき、下のボタンで直せます。
+        </p>
+        <div class="row">
+          <button id="cropGrow">大きく</button>
+          <button id="cropShrink">小さく</button>
+          <button id="cropDelete">この席を消す</button>
+          <button id="cropClear">席を全部消す</button>
+        </div>
+        <div class="row">
+          <button id="cropConfirm" class="primary" disabled>席の配置を確定</button>
+        </div>
+      </div>
       <div class="queue normal-screen">
         <h2>挙手の順番(押すと取り消し)</h2>
         <div id="queue">
@@ -296,13 +315,6 @@
           <option value="video">録画+ログ</option>
         </select>
         <button id="confirmSeats" disabled>人数を確定(0人)</button>
-      </div>
-      <div class="row normal-screen" id="cropControls" hidden>
-        <span class="note">映像をタップして席の頭の中心を置きます。</span>
-        <button id="cropGrow">大きく</button>
-        <button id="cropShrink">小さく</button>
-        <button id="cropDelete">この席を消す</button>
-        <button id="cropClear">席を全部消す</button>
       </div>
       <div class="export">
         <h2>書き出し</h2>

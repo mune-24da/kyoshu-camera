@@ -37,6 +37,7 @@ export function createView(state) {
     "reset",
     "confirmSeats",
     "cropControls",
+    "cropConfirm",
     "cropGrow",
     "cropShrink",
     "cropDelete",
@@ -114,6 +115,9 @@ export function createView(state) {
     elements.confirmSeats.textContent = isCrop
       ? `席の配置を確定(${count}席)`
       : `人数を確定(${count}人)`;
+    elements.confirmSeats.hidden = isCrop;
+    elements.cropConfirm.disabled = elements.confirmSeats.disabled;
+    elements.cropConfirm.textContent = `席の配置を確定(${count}席)`;
   }
 
   function updateRecordHud() {
@@ -211,7 +215,11 @@ export function createView(state) {
         + `席${person.seat + 1} 左 ${marks(person.c.left[1])}`
         + ` 右 ${marks(person.c.right[1])}${raised ? " 挙手" : ""}</div>`;
     });
-    if (!people.length) {
+    if (state.method === "crop" && !state.seats.length) {
+      rows.push('<div class="warn">映像の中の人の頭をタップして、席を置いてください</div>');
+    } else if (state.method === "crop" && !people.length) {
+      rows.push('<div class="warn">席の枠の中に人を追えていません(枠を大きくしてみてください)</div>');
+    } else if (!people.length) {
       rows.push('<div class="warn">人が見つかりません(両肩が映るように)</div>');
     }
     const modelLabel = state.method === "yolo" ? `yolo11n ${state.yoloSize}` : state.config.model;
