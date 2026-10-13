@@ -1,8 +1,13 @@
 import { cropRect, mapCropPoint } from "./crop.mjs";
+import { MOVENET_SIZE, letterbox, moveNetToPoints } from "./movenet.mjs";
 import { yoloInputSize, yoloRows } from "./yolo.mjs";
 
 const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const ORT_DIST = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+const TFJS = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/+esm";
+const MOVENET_URL = "https://tfhub.dev/google/tfjs-model/movenet/singlepose/lightning/4";
+// 席が多いと全部の席を1コマで見きれない。1コマで使う時間をここまでにし、残りの席は次のコマへ回す
+const CROP_BUDGET_MS = 30;
 const modelUrl = (name) => "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
   + `pose_landmarker_${name}/float16/latest/pose_landmarker_${name}.task`;
 
@@ -14,6 +19,10 @@ export function createVision(state, view) {
   let yoloSession = null;
   let ort = null;
   let yoloDelegate = "";
+  let tf = null;
+  let moveNet = null;
+  let moveNetCanvas = null;
+  let cropCursor = 0;
 
   async function loadPose() {
     if (pose) return pose;
@@ -73,7 +82,60 @@ export function createVision(state, view) {
       state.delegate = yoloDelegate;
       return;
     }
+    if (usesMoveNet()) return ensureMoveNet();
     return ensureMediaPipe(state.method === "crop" ? "IMAGE" : "VIDEO");
+  }
+
+  function usesMoveNet() {
+    return state.method === "crop" && state.config.model === "movenet";
+  }
+
+  async function ensureMoveNet() {
+    if (!moveNet) {
+      view.showToast("骨格推定モデルを読み込んでいます…", 60);
+      tf = await import(TFJS);
+      await tf.ready();
+      moveNet = await tf.loadGraphModel(MOVENET_URL, { fromTFHub: true });
+      view.showToast("", 0);
+    }
+    state.delegate = tf.getBackend() === "cpu" ? "CPU" : "GPU";
+  }
+
+  async function moveNetPose(video, rect) {
+    moveNetCanvas ??= document.createElement("canvas");
+    moveNetCanvas.width = MOVENET_SIZE;
+    moveNetCanvas.height = MOVENET_SIZE;
+    const context = moveNetCanvas.getContext("2d", { willReadFrequently: true });
+    const box = letterbox(rect.width, rect.height);
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, MOVENET_SIZE, MOVENET_SIZE);
+    context.drawImage(
+      video,
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
+      box.offsetX,
+      box.offsetY,
+      box.width,
+      box.height,
+    );
+    const output = tf.tidy(() => {
+      return moveNet.execute(tf.cast(tf.expandDims(tf.browser.fromPixels(moveNetCanvas)), "int32"));
+    });
+    const data = await output.data();
+    output.dispose();
+    return moveNetToPoints(data, box, rect);
+  }
+
+  function mediaPipePose(video, rect) {
+    cropCanvas ??= document.createElement("canvas");
+    const context = cropCanvas.getContext("2d", { willReadFrequently: true });
+    cropCanvas.width = 256;
+    cropCanvas.height = Math.max(1, Math.round(256 * rect.height / rect.width));
+    context.drawImage(video, rect.x, rect.y, rect.width, rect.height, 0, 0, cropCanvas.width, cropCanvas.height);
+    const landmarks = state.landmarker.detect(cropCanvas).landmarks[0];
+    return landmarks ? landmarks.map((point) => mapCropPoint(point, rect)) : null;
   }
 
   function whole(video) {
@@ -90,22 +152,30 @@ export function createVision(state, view) {
     };
   }
 
-  function crop(video) {
-    cropCanvas ??= document.createElement("canvas");
-    const context = cropCanvas.getContext("2d", { willReadFrequently: true });
+  // checked は、このコマで見た席の番号。カメラのときは時間の上限で打ち切り、続きは次のコマで見る。
+  // 録画の判定は、機械の速さで結果が変わらないよう、毎コマ全部の席を見る
+  async function crop(video) {
+    const count = state.seats.length;
+    const everySeat = state.source === "file";
+    const moveNetInUse = usesMoveNet();
     const detections = [];
-    state.seats.forEach((seat, index) => {
+    const checked = [];
+    const startedAt = performance.now();
+    for (let step = 0; step < count; step++) {
+      const index = (cropCursor + step) % count;
+      // 推定を待っている間に席が消されることがある
+      const seat = state.seats[index];
+      if (!seat) break;
+      checked.push(index);
       const rect = cropRect(seat, video.videoWidth, video.videoHeight);
-      if (rect.width < 2 || rect.height < 2) return;
-      cropCanvas.width = 256;
-      cropCanvas.height = Math.max(1, Math.round(256 * rect.height / rect.width));
-      context.drawImage(video, rect.x, rect.y, rect.width, rect.height, 0, 0, cropCanvas.width, cropCanvas.height);
-      const result = state.landmarker.detect(cropCanvas);
-      const landmarks = result.landmarks[0];
-      if (!landmarks) return;
-      detections.push({ seat: index, points: landmarks.map((point) => mapCropPoint(point, rect)) });
-    });
-    return { detectedCount: state.seats.length, detections };
+      if (rect.width >= 2 && rect.height >= 2) {
+        const points = moveNetInUse ? await moveNetPose(video, rect) : mediaPipePose(video, rect);
+        if (points) detections.push({ seat: index, points });
+      }
+      if (!everySeat && performance.now() - startedAt > CROP_BUDGET_MS) break;
+    }
+    cropCursor = checked.length ? (checked.at(-1) + 1) % count : 0;
+    return { detectedCount: count, detections, checked };
   }
 
   async function runYolo(video, longSide) {

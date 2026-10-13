@@ -232,7 +232,7 @@ export function createView(state) {
     }
     const modelLabel = state.method === "yolo" ? `yolo11n ${state.yoloSize}` : state.config.model;
     const detected = state.method === "crop"
-      ? `席 ${state.seats.length} のうち人を追えた ${people.length}`
+      ? `席 ${state.seats.length} のうち人を追えた ${people.length} / 1席あたり毎秒 ${state.seatRate.toFixed(1)}回`
       : `検出 ${state.detectedCount}人 / 採用 ${people.length}人`;
     hud.innerHTML = `<div>${state.resolution || `${width}x${height}`} ${state.method} `
       + `${state.delegate || ""} ${state.fps.toFixed(1)}fps ${modelLabel}</div>`

@@ -121,7 +121,8 @@ export function createLogger(state) {
       `方式: ${state.method} / モデル: ${modelLabel} / ${state.delegate || "不明"}`,
       `YOLO入力: ${state.yoloSize ?? "-"} / 希望解像度: ${state.resolutionChoice ?? "-"}`,
       `基準: 鼻=${state.config.over}, 腕=${state.config.forearm}, 肘=${state.config.elbow}, 継続=${state.config.hold}秒`,
-      `平均fps: ${state.fps.toFixed(1)} / 記録モード: ${state.activeRecordMode}`,
+      `平均fps: ${state.fps.toFixed(1)} / 記録モード: ${state.activeRecordMode}`
+        + (state.method === "crop" ? ` / 1席あたり毎秒 ${state.seatRate.toFixed(1)}回` : ""),
       `${state.method === "crop" ? "席数" : "検出した人数"}ごとのコマ数: ${histogramText(state.detectedHist)}`,
       `${state.method === "crop" ? "追えた人数" : "採用した人数"}ごとのコマ数: ${histogramText(state.keptHist)}`,
       `人数確定: ${seats}`,

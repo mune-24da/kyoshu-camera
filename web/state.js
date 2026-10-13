@@ -3,7 +3,9 @@ import { DEFAULT_DETECTION_CONFIG } from "./detection.mjs";
 export function createState() {
   const saved = safeRead();
   // 全体から探す方式は細かいモデル、席ごとに切り出す方式は席の数だけ回すので軽いモデルが向く
-  const models = { whole: "full", crop: "lite", ...saved.models };
+  const models = { whole: "full", crop: "movenet", ...saved.models };
+  // 席ごとの既定を lite から MoveNet に変えた。変える前に保存された lite は、選び直したものではないので置き換える
+  if (!saved.cropDefaultIsMoveNet && models.crop === "lite") models.crop = "movenet";
   return {
     config: {
       ...DEFAULT_DETECTION_CONFIG,
@@ -23,6 +25,8 @@ export function createState() {
     yoloSize: saved.yoloSize ?? "960",
     cropSeats: saved.cropSeats ?? [],
     selectedCropSeat: null,
+    seatPeople: [],
+    seatRate: 0,
     seats: [],
     seatsConfirmed: false,
     lastPeople: [],
@@ -75,6 +79,7 @@ export function saveSettings(state) {
           mirror: state.config.mirror,
         },
         models: state.models,
+        cropDefaultIsMoveNet: true,
         recordMode: state.recordMode,
         method: state.method,
         resolutionChoice: state.resolutionChoice,

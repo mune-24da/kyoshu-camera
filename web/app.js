@@ -91,12 +91,23 @@ async function processFrame(now) {
     });
   }
 
+  // 席ごとに切り出す方式は1コマで一部の席しか見ないことがある。見なかった席は前の結果を残す
+  if (result.checked) {
+    result.checked.forEach((index) => {
+      if (state.seats[index]) state.seats[index].tracked = false;
+      state.seatPeople[index] = null;
+    });
+    people.forEach((person) => state.seatPeople[person.seat] = person);
+  } else {
+    state.seats.forEach((seat) => seat.tracked = false);
+  }
+  const shown = result.checked ? state.seatPeople.filter(Boolean) : people;
+
   // 骨格推定が見つけた人数と、両肩が見えない・値が異常などで捨てた後の人数を分けて数える
   state.detectedCount = result.detectedCount;
   state.detectedHist[state.detectedCount] = (state.detectedHist[state.detectedCount] ?? 0) + 1;
-  state.keptHist[people.length] = (state.keptHist[people.length] ?? 0) + 1;
-  state.lastPeople = people;
-  state.seats.forEach((seat) => seat.tracked = false);
+  state.keptHist[shown.length] = (state.keptHist[shown.length] ?? 0) + 1;
+  state.lastPeople = shown;
   people.forEach((person) => {
     const seat = state.seats[person.seat];
     seat.tracked = true;
@@ -125,7 +136,11 @@ async function processFrame(now) {
     state.fps = state.fps * 0.9 + (1000 / (frameAt - state.lastFrameAt)) * 0.1;
   }
   state.lastFrameAt = frameAt;
-  view.draw(people);
+  if (result.checked && state.seats.length) {
+    const rate = state.fps * result.checked.length / state.seats.length;
+    state.seatRate = state.seatRate ? state.seatRate * 0.9 + rate * 0.1 : rate;
+  }
+  view.draw(shown);
 }
 
 function beginSession() {
@@ -137,6 +152,8 @@ function beginSession() {
     })
     : [];
   state.selectedCropSeat = null;
+  state.seatPeople = [];
+  state.seatRate = 0;
   state.seatsConfirmed = false;
   state.lastPeople = [];
   state.queue = [];
@@ -250,6 +267,8 @@ function releaseSeats() {
 }
 
 function syncCropSeats() {
+  // 席を足したり消したりすると番号がずれるので、席ごとに覚えている前の結果は捨てる
+  if (state.seatPeople.length !== state.seats.length) state.seatPeople = [];
   state.cropSeats = state.seats.map(({ left, top, width, height }) => ({ left, top, width, height }));
   saveSettings(state);
 }
@@ -474,6 +493,8 @@ function updateMethodUi() {
   const crop = state.method === "crop";
   const yolo = state.method === "yolo";
   elements.cropControls.hidden = !crop;
+  // MoveNet は1人用なので、席ごとに切り出す方式でしか選べない
+  elements.model.querySelector('option[value="movenet"]').disabled = !crop;
   elements.yoloSizeLabel.hidden = !yolo;
   elements.method.value = state.method;
   elements.methodSetting.value = state.method;
