@@ -26,6 +26,8 @@ export function createView(state) {
     "method",
     "methodSetting",
     "resolution",
+    "fullscreen",
+    "homeScreenNote",
     "zoom",
     "zoomV",
     "zoomRow",

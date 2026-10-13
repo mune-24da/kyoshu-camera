@@ -585,6 +585,20 @@ elements.canvas.addEventListener("pointerup", endSeatGesture);
 elements.canvas.addEventListener("pointercancel", endSeatGesture);
 elements.canvas.addEventListener("wheel", wheelSeat, { passive: false });
 elements.cropAuto.onclick = autoPlaceSeats;
+
+// 全画面にできるブラウザ(Android や PC、iPad)ではボタンを出す。iPhone の Safari はできないので、
+// ホーム画面に追加する手順を案内する。ホーム画面から開いたときは、どちらも出さない
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const canFullscreen = Boolean(document.fullscreenEnabled);
+elements.fullscreen.hidden = standalone || !canFullscreen;
+elements.homeScreenNote.hidden = standalone || canFullscreen || !/iPhone|iPad|iPod/.test(navigator.userAgent);
+elements.fullscreen.onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch((error) => view.showToast(error.message, 5));
+};
+document.addEventListener("fullscreenchange", () => {
+  elements.fullscreen.textContent = document.fullscreenElement ? "全画面をやめる" : "全画面";
+});
 elements.cropControls.ontoggle = () => {
   state.cropPanelOpen = elements.cropControls.open;
   saveSettings(state);

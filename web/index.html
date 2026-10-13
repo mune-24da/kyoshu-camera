@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>挙手カメラ</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#111111">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="挙手カメラ">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
   <style>
     :root {
       color-scheme: dark;
@@ -30,7 +38,9 @@
     main {
       max-width: 1100px;
       margin: auto;
-      padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+      /* ホーム画面から開くと画面の端まで使うので、切り欠きや角の丸みに重ならない余白を取る */
+      padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+        calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
     }
     .stage {
       position: relative;
@@ -304,7 +314,12 @@
           <option value="1920x1080">解像度 1920×1080</option>
           <option value="3840x2160">解像度 3840×2160</option>
         </select>
+        <button id="fullscreen" hidden>全画面</button>
       </div>
+      <p class="note normal-screen" id="homeScreenNote" hidden>
+        アドレスバーを消して画面を広く使うには: Safari の共有ボタン(□に↑)から「ホーム画面に追加」を選び、
+        ホーム画面にできたアイコンから開きます。
+      </p>
       <div class="row normal-screen" id="zoomRow" hidden>
         <label class="zoom">
           ズーム <b id="zoomV"></b>
