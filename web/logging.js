@@ -22,7 +22,13 @@ const histogramText = (histogram) => {
     .map(([people, frames]) => `${people}人=${frames}`)
     .join(", ") || "なし";
 };
-const EVENT_LABELS = { raise: "挙手", lower: "解除", cancel: "取り消し", reset: "リセット" };
+const EVENT_LABELS = {
+  raise: "挙手",
+  lower: "解除",
+  called: "指名済み",
+  cancel: "取り消し",
+  reset: "リセット",
+};
 
 export function sessionFileName(date = new Date()) {
   return `kyoshu-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`

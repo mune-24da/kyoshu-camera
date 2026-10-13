@@ -19,6 +19,8 @@
     * { box-sizing: border-box; }
     /* .row などの display 指定が hidden 属性より強く、隠したはずの欄が出てしまうのを防ぐ */
     [hidden] { display: none !important; }
+    /* 畳んだ欄の中身が、.row などの display 指定で見えたままにならないようにする */
+    details:not([open]) > :not(summary) { display: none !important; }
     body {
       margin: 0;
       background: var(--bg);
@@ -251,14 +253,14 @@
       <div class="now" id="progressNow">挙手待ち</div>
       <div id="progressQueue"></div>
       <div class="row">
-        <button id="progressUndo">最後を取り消す</button>
+        <button id="progressCall" class="primary">指名済み(先頭を消す)</button>
         <button id="progressReset">順番をリセット</button>
         <button id="releaseSeats">確定を解除</button>
       </div>
     </section>
     <div class="side">
-      <div class="queue normal-screen" id="cropControls" hidden>
-        <h2>席を置く</h2>
+      <details class="queue normal-screen" id="cropControls" open hidden>
+        <summary>席を置く(押すと畳む・開く)</summary>
         <p class="note">
           カメラを開始してから「自動で席を置く」を押すと、見つかった人に枠が付きます。
           足りない席は、映像の上で人の頭を押すか、囲むようにドラッグして足します。
@@ -275,14 +277,14 @@
         <div class="row">
           <button id="cropConfirm" class="primary" disabled>席の配置を確定</button>
         </div>
-      </div>
+      </details>
       <div class="queue normal-screen">
         <h2>挙手の順番(押すと取り消し)</h2>
         <div id="queue">
           <span class="empty">まだ誰も挙げていない</span>
         </div>
         <div class="row">
-          <button id="undoLast">最後を取り消す</button>
+          <button id="callFirst" class="primary">指名済み(先頭を消す)</button>
           <button id="reset">順番をリセット</button>
         </div>
       </div>

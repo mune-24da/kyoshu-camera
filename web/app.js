@@ -204,6 +204,15 @@ const sources = createSources(state, view, vision, {
   processFrame,
 });
 
+// 先頭の人を当てたら列から外す。取り消しと同じく、一度手を下ろして挙げ直すまで並び直さない
+function callFirst() {
+  if (!state.queue.length) return;
+  const seat = state.queue.shift();
+  addEvent({ seat: seat + 1, ev: "called" });
+  view.renderQueue(cancel);
+  view.showToast(`席${seat + 1}を指名済みにしました`);
+}
+
 function cancel(seat) {
   if (!state.queue.includes(seat)) return;
 
@@ -493,6 +502,7 @@ function updateMethodUi() {
   const crop = state.method === "crop";
   const yolo = state.method === "yolo";
   elements.cropControls.hidden = !crop;
+  elements.cropControls.open = state.cropPanelOpen;
   // MoveNet は1人用なので、席ごとに切り出す方式でしか選べない
   elements.model.querySelector('option[value="movenet"]').disabled = !crop;
   elements.yoloSizeLabel.hidden = !yolo;
@@ -562,9 +572,9 @@ elements.camera.onchange = () => {
   }
 };
 elements.stop.onclick = sources.stop;
-elements.undoLast.onclick = () => state.queue.length && cancel(state.queue.at(-1));
+elements.callFirst.onclick = callFirst;
 elements.reset.onclick = reset;
-elements.progressUndo.onclick = () => state.queue.length && cancel(state.queue.at(-1));
+elements.progressCall.onclick = callFirst;
 elements.progressReset.onclick = reset;
 elements.confirmSeats.onclick = confirmSeats;
 elements.cropConfirm.onclick = confirmSeats;
@@ -575,6 +585,10 @@ elements.canvas.addEventListener("pointerup", endSeatGesture);
 elements.canvas.addEventListener("pointercancel", endSeatGesture);
 elements.canvas.addEventListener("wheel", wheelSeat, { passive: false });
 elements.cropAuto.onclick = autoPlaceSeats;
+elements.cropControls.ontoggle = () => {
+  state.cropPanelOpen = elements.cropControls.open;
+  saveSettings(state);
+};
 elements.cropDelete.onclick = deleteCropSeat;
 elements.cropClear.onclick = () => {
   if (state.seatsConfirmed) return;
@@ -640,7 +654,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key >= "1" && event.key <= "9") {
     cancel(+event.key - 1);
   } else if (event.key === "x") {
-    state.queue.length && cancel(state.queue.at(-1));
+    callFirst();
   } else if (event.key === "r") {
     reset();
   }
