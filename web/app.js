@@ -131,11 +131,19 @@ async function processFrame(now) {
     logger.addFrame(now, person, seat, person.c, event);
   });
 
+  // iPhoneのSafariは performance.now() の刻みが粗く、連続するコマが同じ時刻になることがある
   const frameAt = performance.now();
-  if (state.lastFrameAt) {
-    state.fps = state.fps * 0.9 + (1000 / (frameAt - state.lastFrameAt)) * 0.1;
+  state.framesSince = (state.framesSince || 0) + 1;
+  const elapsed = frameAt - state.lastFrameAt;
+  if (!state.lastFrameAt) {
+    state.lastFrameAt = frameAt;
+    state.framesSince = 0;
+  } else if (elapsed > 0) {
+    const sample = state.framesSince * 1000 / elapsed;
+    state.fps = state.fps ? state.fps * 0.9 + sample * 0.1 : sample;
+    state.lastFrameAt = frameAt;
+    state.framesSince = 0;
   }
-  state.lastFrameAt = frameAt;
   if (result.checked && state.seats.length) {
     const rate = state.fps * result.checked.length / state.seats.length;
     state.seatRate = state.seatRate ? state.seatRate * 0.9 + rate * 0.1 : rate;
@@ -165,6 +173,7 @@ function beginSession() {
   state.keptHist = {};
   state.fps = 0;
   state.lastFrameAt = 0;
+  state.framesSince = 0;
   state.now = 0;
   state.activeRecordMode = state.source === "file" && state.recordMode === "video"
     ? "log"
